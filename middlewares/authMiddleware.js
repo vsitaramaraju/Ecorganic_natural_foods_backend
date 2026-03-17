@@ -25,7 +25,9 @@ exports.authenticateToken = async (req, res, next) => {
 };
 
 exports.authorizeAdmin = (req, res, next) => {
-    if (req.user.role !== 'admin') {
+    console.log('User role:', req.user.role); // Debugging line
+    console.log('Is user admin?', req.user.role === 'ADMIN'); // Debugging line
+    if (req.user.role !== 'ADMIN') {
         return res.status(403).json({ error: 'Access denied' });
     }
     next();
