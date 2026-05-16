@@ -27,6 +27,7 @@ orders Order[]
 model Category {
   id          Int     @id @default(autoincrement())
   name        String  @unique
+  imageUrl    String?
   products    Product[]
   createdAt   DateTime @default(now())
 }

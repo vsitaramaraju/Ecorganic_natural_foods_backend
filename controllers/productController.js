@@ -1,20 +1,5 @@
 const prisma = require("../src/utils/prisma");
 
-
-exports.createCategory = async (req, res) => {
-    try {
-
-        const { name } = req.body;
-
-        const category = await prisma.category.create({data:{name}});
-        res.status(201).json(category);
-
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-};
-
-
 exports.createProduct = async (req, res) => {
     try {
 
@@ -31,7 +16,8 @@ exports.createProduct = async (req, res) => {
         });
         res.status(201).json(product);
     } catch (error) {
-        res.status(500).json({ error: "Failed to create product" });
+        console.log("Error creating product:", error);
+        res.status(500).json({ error: error.message });
     }
 };
 
@@ -43,7 +29,27 @@ exports.getProducts = async (req, res) => {
         });
         res.status(200).json(products);
     } catch (error) {
-        res.status(500).json({ error: "Failed to fetch products" });
+        console.log("Error fetching products:", error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+exports.getProductsByCategory = async (req, res) => {
+    try {
+        const categoryId = parseInt(req.params.categoryId, 10);
+
+        if (Number.isNaN(categoryId)) {
+            return res.status(400).json({ error: "Invalid category id" });
+        }
+
+        const products = await prisma.product.findMany({
+            where: { categoryId },
+            include: { category: true },
+        });
+
+        res.status(200).json(products);
+    } catch (error) {
+        res.status(500).json({ error: "Failed to fetch products by category" });
     }
 };
 
@@ -59,6 +65,7 @@ exports.getProductById = async (req, res) => {
         }
         res.status(200).json(product);
     } catch (error) {
+        console.log("Error fetching product by id:", error);
         res.status(500).json({ error: "Failed to fetch product" });
     }   
 };
