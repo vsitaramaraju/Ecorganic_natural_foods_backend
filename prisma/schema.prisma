@@ -13,15 +13,17 @@ datasource db {
 }
 
 model User {
-id        Int      @id @default(autoincrement())
-name      String
-email     String   @unique
-password  String
-role      String   @default("USER")
-createdAt DateTime @default(now())
-cartItems CartItem[]
-addresses Address[]
-orders Order[]
+id                    Int      @id @default(autoincrement())
+name                  String
+email                 String   @unique
+password              String
+role                  String   @default("USER")
+resetToken            String?
+resetTokenExpiry      DateTime?
+createdAt             DateTime @default(now())
+cartItems             CartItem[]
+addresses             Address[]
+orders                Order[]
 }
 
 model Category {

@@ -69,3 +69,66 @@ exports.getProductById = async (req, res) => {
         res.status(500).json({ error: "Failed to fetch product" });
     }   
 };
+
+exports.searchProducts = async (req, res) => {
+    try {
+        const { query, categoryId, minPrice, maxPrice, inStock } = req.query;
+
+        // Build the where clause
+        const where = {};
+
+        // Search by product name or description
+        if (query) {
+            where.OR = [
+                {
+                    name: {
+                        contains: query,
+                        mode: "insensitive",
+                    },
+                },
+                {
+                    description: {
+                        contains: query,
+                        mode: "insensitive",
+                    },
+                },
+            ];
+        }
+
+        // Filter by category
+        if (categoryId) {
+            where.categoryId = parseInt(categoryId, 10);
+        }
+
+        // Filter by price range
+        if (minPrice || maxPrice) {
+            where.price = {};
+            if (minPrice) {
+                where.price.gte = parseFloat(minPrice);
+            }
+            if (maxPrice) {
+                where.price.lte = parseFloat(maxPrice);
+            }
+        }
+
+        // Filter by stock availability
+        if (inStock === "true") {
+            where.stock = { gt: 0 };
+        }
+
+        // Fetch products with filters
+        const products = await prisma.product.findMany({
+            where,
+            include: { category: true },
+            orderBy: { createdAt: "desc" },
+        });
+
+        res.status(200).json({
+            count: products.length,
+            products,
+        });
+    } catch (error) {
+        console.log("Error searching products:", error);
+        res.status(500).json({ error: "Failed to search products" });
+    }
+};
