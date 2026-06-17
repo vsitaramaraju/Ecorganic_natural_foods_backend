@@ -24,6 +24,7 @@ createdAt             DateTime @default(now())
 cartItems             CartItem[]
 addresses             Address[]
 orders                Order[]
+wishlists            Wishlist[]
 }
 
 model Category {
@@ -46,6 +47,7 @@ model Product {
   createdAt   DateTime @default(now())
   cartItems CartItem[]
   orderItems OrderItem[]
+  wishlists Wishlist[]
 }
 
 model CartItem {
@@ -96,5 +98,17 @@ model OrderItem {
   productId Int
   quantity  Int
   price     Float
+}
+
+model Wishlist {
+  id        Int      @id @default(autoincrement())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    Int
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId Int
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId]) // prevents duplicate wishlist items
+  @@index([userId])
 }
 

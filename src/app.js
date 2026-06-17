@@ -9,6 +9,7 @@ const addressRoutes = require("../routes/addressRoutes");
 const orderRoutes = require("../routes/orderRoutes");
 const adminOrderRoutes = require("../routes/adminOrderRoutes");
 const adminProductRoutes = require("../routes/adminProductRoutes");
+const wishlistRoutes = require("../routes/wishlistRoutes");
 
 
 const app = express();
@@ -25,6 +26,7 @@ app.use("/api/address", addressRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/admin/orders", adminOrderRoutes);
 app.use("/api/admin/products", adminProductRoutes);
+app.use("/api/wishlist", wishlistRoutes);
 
 app.get('/',(req, res)=>{
 res.send("Welcome to Eco Organic Natural Foods API");
