@@ -2,6 +2,8 @@ const express = require("express");
 const {
   getAllProductsForAdmin,
   getProductsByCategoryForAdmin,
+  updateProductForAdmin,
+  deleteProductForAdmin,
 } = require("../controllers/adminProductController");
 const { authenticateToken, authorizeAdmin } = require("../middlewares/authMiddleware");
 
@@ -14,5 +16,7 @@ router.get(
   authorizeAdmin,
   getProductsByCategoryForAdmin
 );
+router.put("/:id", authenticateToken, authorizeAdmin, updateProductForAdmin);
+router.delete("/:id", authenticateToken, authorizeAdmin, deleteProductForAdmin);
 
 module.exports = router;

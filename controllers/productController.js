@@ -1,5 +1,32 @@
 const prisma = require("../src/utils/prisma");
 
+const publicReviewInclude = {
+    user: {
+        select: {
+            id: true,
+            name: true,
+        },
+    },
+};
+
+const buildReviewSummary = (reviews) => {
+    const totalReviews = reviews.length;
+
+    if (totalReviews === 0) {
+        return {
+            averageRating: 0,
+            totalReviews: 0,
+        };
+    }
+
+    const totalRating = reviews.reduce((sum, review) => sum + review.rating, 0);
+
+    return {
+        averageRating: Number((totalRating / totalReviews).toFixed(1)),
+        totalReviews,
+    };
+};
+
 exports.createProduct = async (req, res) => {
     try {
 
@@ -55,15 +82,30 @@ exports.getProductsByCategory = async (req, res) => {
 
 exports.getProductById = async (req, res) => {
     try {
-        const { id } = req.params;
+        const productId = parseInt(req.params.id, 10);
+
+        if (Number.isNaN(productId)) {
+            return res.status(400).json({ error: "Invalid product id" });
+        }
+
         const product = await prisma.product.findUnique({
-            where: { id: parseInt(id) },
-            include: { category: true },
+            where: { id: productId },
+            include: {
+                category: true,
+                reviews: {
+                    include: publicReviewInclude,
+                    orderBy: { createdAt: "desc" },
+                },
+            },
         });
         if (!product) {
             return res.status(404).json({ error: "Product not found" });
         }
-        res.status(200).json(product);
+
+        res.status(200).json({
+            ...product,
+            reviewSummary: buildReviewSummary(product.reviews),
+        });
     } catch (error) {
         console.log("Error fetching product by id:", error);
         res.status(500).json({ error: "Failed to fetch product" });
