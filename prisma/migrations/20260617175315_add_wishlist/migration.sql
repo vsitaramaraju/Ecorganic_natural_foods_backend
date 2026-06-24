@@ -9,10 +9,10 @@ CREATE TABLE "Wishlist" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Wishlist_userId_productId_key" ON "Wishlist"("userId", "productId");
+CREATE INDEX "Wishlist_userId_idx" ON "Wishlist"("userId");
 
 -- CreateIndex
-CREATE INDEX "Wishlist_userId_idx" ON "Wishlist"("userId");
+CREATE UNIQUE INDEX "Wishlist_userId_productId_key" ON "Wishlist"("userId", "productId");
 
 -- AddForeignKey
 ALTER TABLE "Wishlist" ADD CONSTRAINT "Wishlist_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
