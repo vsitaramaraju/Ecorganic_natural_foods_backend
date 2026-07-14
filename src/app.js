@@ -11,6 +11,8 @@ const adminOrderRoutes = require("../routes/adminOrderRoutes");
 const adminProductRoutes = require("../routes/adminProductRoutes");
 const wishlistRoutes = require("../routes/wishlistRoutes");
 const adminRoutes = require("../routes/adminRoutes");
+const couponRoutes = require("../routes/couponRoutes");
+const adminCouponRoutes = require("../routes/adminCouponRoutes");
 
 const app = express();
 app.use(
@@ -29,6 +31,8 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/admin/orders", adminOrderRoutes);
 app.use("/api/admin/products", adminProductRoutes);
 app.use("/api/wishlist", wishlistRoutes);
+app.use("/api/coupons", couponRoutes);
+app.use("/api/admin/coupons", adminCouponRoutes);
 app.use("/api/admin", adminRoutes);
 
 app.get("/", (req, res) => {

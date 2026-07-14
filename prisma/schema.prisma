@@ -10,7 +10,7 @@ model User {
   id               Int        @id @default(autoincrement())
   name             String
   email            String     @unique
-  password         String
+  password         String?
   phone     String?
   role             String     @default("USER")
   createdAt        DateTime   @default(now())
@@ -77,15 +77,20 @@ model Address {
 }
 
 model Order {
-  id          Int         @id @default(autoincrement())
-  userId      Int
-  addressId   Int
-  totalAmount Float
-  status      String      @default("PENDING")
-  createdAt   DateTime    @default(now())
-  address     Address     @relation(fields: [addressId], references: [id])
-  user        User        @relation(fields: [userId], references: [id])
-  items       OrderItem[]
+  id             Int         @id @default(autoincrement())
+  userId         Int
+  addressId      Int
+  subtotalAmount Float       @default(0)
+  discountAmount Float       @default(0)
+  totalAmount    Float
+  couponId       Int?
+  couponCode     String?
+  status         String      @default("PENDING")
+  createdAt      DateTime    @default(now())
+  address        Address     @relation(fields: [addressId], references: [id])
+  user           User        @relation(fields: [userId], references: [id])
+  coupon         Coupon?     @relation(fields: [couponId], references: [id])
+  items          OrderItem[]
 }
 
 model OrderItem {
@@ -124,4 +129,27 @@ model Review {
   @@unique([userId, productId]) // optional: one review per user per product
   @@index([userId])
   @@index([productId])
+}
+
+// type: "GENERAL" | "NEW_USER" | "SEASONAL"
+model Coupon {
+  id                Int       @id @default(autoincrement())
+  code              String    @unique
+  description       String?
+  discountPercent    Float
+  type              String    @default("GENERAL")
+  isActive          Boolean   @default(true)
+  startDate         DateTime?
+  endDate           DateTime?
+  minOrderAmount    Float?
+  maxDiscountAmount Float?
+  usageLimit        Int?
+  usageLimitPerUser Int?      @default(1)
+  usedCount         Int       @default(0)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  orders            Order[]
+
+  @@index([type])
+  @@index([isActive])
 }

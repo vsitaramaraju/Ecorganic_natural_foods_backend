@@ -4,9 +4,35 @@ const crypto = require("crypto");
 const prisma = require("../src/utils/prisma");
 const { sendPasswordResetEmail } = require("../src/utils/emailService");
 
+const userSelect = {
+  id: true,
+  name: true,
+  email: true,
+  phone: true,
+  role: true
+};
+
+const buildAuthToken = (user) =>
+  jwt.sign({ userId: user.id, role: user.role }, process.env.JWT_SECRET, {
+    expiresIn: "2d"
+  });
+
+const buildUserResponse = (user) => ({
+  id: user.id,
+  name: user.name,
+  email: user.email,
+  phone: user.phone,
+  role: user.role
+});
+
 exports.register = async (req, res) => {
   try {
     const { name, email, password } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: "Name, email, and password are required" });
+    }
+
     // Check if user already exists
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {
@@ -14,12 +40,14 @@ exports.register = async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    console.log(hashedPassword);
 
     const user = await prisma.user.create({
       data: { name, email, password: hashedPassword }
     });
-    res.status(201).json({ message: "User registered" });
+    res.status(201).json({
+      message: "User registered",
+      user: buildUserResponse(user)
+    });
   } catch (error) {
     console.error("Error during registration:", error);
     res.status(500).json({ message: "Internal server error" });
@@ -34,25 +62,21 @@ exports.login = async (req, res) => {
       return res.status(400).json({ message: "invalid credentials" });
     }
 
+    if (!user.password) {
+      return res.status(400).json({
+        message: "Password is not set for this account."
+      });
+    }
+
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ message: "invalid credentials" });
     }
-    const token = jwt.sign(
-      { userId: user.id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: "2d" }
-    );
+    const token = buildAuthToken(user);
 
     res.json({
       token,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role
-      }
+      user: buildUserResponse(user)
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -74,6 +98,12 @@ exports.forgotPassword = async (req, res) => {
       return res
         .status(400)
         .json({ message: "User not found with this email" });
+    }
+
+    if (!user.password) {
+      return res.status(400).json({
+        message: "Password reset is not available for this account."
+      });
     }
 
     // Generate reset token
@@ -251,6 +281,12 @@ exports.changePassword = async (req, res) => {
         id: userId
       }
     });
+
+    if (!user?.password) {
+      return res.status(400).json({
+        message: "This account does not have a local password set"
+      });
+    }
 
     const isMatch = await bcrypt.compare(currentPassword, user.password);
 
