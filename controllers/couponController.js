@@ -1,5 +1,8 @@
 const prisma = require("../src/utils/prisma");
-const { evaluateCoupon, getActiveCouponWhere } = require("../src/utils/couponUtils");
+const {
+  evaluateCoupon,
+  getActiveCouponWhere
+} = require("../src/utils/couponUtils");
 
 const VALID_TYPES = ["GENERAL", "NEW_USER", "SEASONAL"];
 
@@ -22,15 +25,21 @@ exports.createCoupon = async (req, res) => {
     } = req.body;
 
     if (!code || discountPercent === undefined) {
-      return res.status(400).json({ message: "code and discountPercent are required" });
+      return res
+        .status(400)
+        .json({ message: "code and discountPercent are required" });
     }
 
     if (discountPercent <= 0 || discountPercent > 100) {
-      return res.status(400).json({ message: "discountPercent must be between 1 and 100" });
+      return res
+        .status(400)
+        .json({ message: "discountPercent must be between 1 and 100" });
     }
 
     if (type && !VALID_TYPES.includes(type)) {
-      return res.status(400).json({ message: `type must be one of ${VALID_TYPES.join(", ")}` });
+      return res
+        .status(400)
+        .json({ message: `type must be one of ${VALID_TYPES.join(", ")}` });
     }
 
     const coupon = await prisma.coupon.create({
@@ -110,12 +119,19 @@ exports.updateCoupon = async (req, res) => {
       usageLimitPerUser
     } = req.body;
 
-    if (discountPercent !== undefined && (discountPercent <= 0 || discountPercent > 100)) {
-      return res.status(400).json({ message: "discountPercent must be between 1 and 100" });
+    if (
+      discountPercent !== undefined &&
+      (discountPercent <= 0 || discountPercent > 100)
+    ) {
+      return res
+        .status(400)
+        .json({ message: "discountPercent must be between 1 and 100" });
     }
 
     if (type && !VALID_TYPES.includes(type)) {
-      return res.status(400).json({ message: `type must be one of ${VALID_TYPES.join(", ")}` });
+      return res
+        .status(400)
+        .json({ message: `type must be one of ${VALID_TYPES.join(", ")}` });
     }
 
     const data = {};
@@ -124,12 +140,16 @@ exports.updateCoupon = async (req, res) => {
     if (discountPercent !== undefined) data.discountPercent = discountPercent;
     if (type !== undefined) data.type = type;
     if (isActive !== undefined) data.isActive = isActive;
-    if (startDate !== undefined) data.startDate = startDate ? new Date(startDate) : null;
-    if (endDate !== undefined) data.endDate = endDate ? new Date(endDate) : null;
+    if (startDate !== undefined)
+      data.startDate = startDate ? new Date(startDate) : null;
+    if (endDate !== undefined)
+      data.endDate = endDate ? new Date(endDate) : null;
     if (minOrderAmount !== undefined) data.minOrderAmount = minOrderAmount;
-    if (maxDiscountAmount !== undefined) data.maxDiscountAmount = maxDiscountAmount;
+    if (maxDiscountAmount !== undefined)
+      data.maxDiscountAmount = maxDiscountAmount;
     if (usageLimit !== undefined) data.usageLimit = usageLimit;
-    if (usageLimitPerUser !== undefined) data.usageLimitPerUser = usageLimitPerUser;
+    if (usageLimitPerUser !== undefined)
+      data.usageLimitPerUser = usageLimitPerUser;
 
     const coupon = await prisma.coupon.update({ where: { id }, data });
 
@@ -174,7 +194,7 @@ exports.getActiveCoupons = async (req, res) => {
       where: { userId: req.user.id }
     });
 
-    const result = coupons.map((coupon) => ({
+    const result = coupons.map(coupon => ({
       id: coupon.id,
       code: coupon.code,
       description: coupon.description,
@@ -223,7 +243,9 @@ exports.validateCoupon = async (req, res) => {
     });
 
     if (!coupon) {
-      return res.status(404).json({ valid: false, message: "Invalid coupon code" });
+      return res
+        .status(404)
+        .json({ valid: false, message: "Invalid coupon code" });
     }
 
     const result = await evaluateCoupon({ coupon, userId, subtotalAmount });

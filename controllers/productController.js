@@ -1,4 +1,5 @@
 const prisma = require("../src/utils/prisma");
+const { isValidPriceUnit } = require("../src/utils/priceUnit");
 
 const publicReviewInclude = {
   user: {
@@ -27,22 +28,15 @@ const buildReviewSummary = reviews => {
   };
 };
 
-const VALID_PRICE_UNITS = [
-  "fixed",
-  "per_kg",
-  "per_500g",
-  "per_250g",
-  "per_100g"
-];
-
 exports.createProduct = async (req, res) => {
   try {
     const { name, description, price, categoryId, imageUrl, stock, priceUnit } =
       req.body;
 
-    if (priceUnit && !VALID_PRICE_UNITS.includes(priceUnit)) {
+    if (priceUnit && !isValidPriceUnit(priceUnit)) {
       return res.status(400).json({
-        error: `Invalid priceUnit. Must be one of: ${VALID_PRICE_UNITS.join(", ")}`
+        error:
+          'Invalid priceUnit. Must be "fixed" or a weight like "per_200g" / "per_1.5kg"'
       });
     }
 
