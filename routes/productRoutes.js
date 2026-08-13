@@ -7,9 +7,12 @@ const {
 	updateProductReview,
 	deleteProductReview,
 } = require("../controllers/reviewController");
+const { upload } = require("../src/utils/imageUpload");
+
 const router = express.Router();
 
-router.post("/", authenticateToken,authorizeAdmin, createProduct);
+// Create product with image uploads - accepts multiple files
+router.post("/", authenticateToken, authorizeAdmin, upload.array("images", 10), createProduct);
 router.get("/search", searchProducts);
 router.get("/:productId/reviews", getProductReviews);
 router.post("/:productId/reviews", authenticateToken, createProductReview);

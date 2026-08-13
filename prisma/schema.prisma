@@ -29,6 +29,17 @@ model Category {
   createdAt DateTime  @default(now())
   imageUrl  String?
   products  Product[]
+  images    CategoryImage[]
+}
+
+model CategoryImage {
+  id         Int      @id @default(autoincrement())
+  categoryId Int
+  imageUrl   String
+  createdAt  DateTime @default(now())
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  
+  @@index([categoryId])
 }
 
 model Product {
@@ -46,6 +57,17 @@ model Product {
   category    Category    @relation(fields: [categoryId], references: [id])
   wishlists   Wishlist[]
   reviews     Review[]
+  images      ProductImage[]
+}
+
+model ProductImage {
+  id        Int      @id @default(autoincrement())
+  productId Int
+  imageUrl  String
+  createdAt DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  @@index([productId])
 }
 
 model CartItem {

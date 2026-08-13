@@ -1,5 +1,6 @@
 const prisma = require("../src/utils/prisma");
 const { isValidPriceUnit } = require("../src/utils/priceUnit");
+const { getImageUrlPath, deleteImageFile } = require("../src/utils/imageUpload");
 
 const parseProductId = value => {
   const productId = parseInt(value, 10);
@@ -22,9 +23,8 @@ const buildProductUpdateData = body => {
     data.description = body.description;
   }
 
-  if (body.imageUrl !== undefined) {
-    data.imageUrl = body.imageUrl;
-  }
+  // Note: imageUrl is not updatable directly - use image upload instead
+  // Removed: if (body.imageUrl !== undefined) { data.imageUrl = body.imageUrl; }
 
   if (body.price !== undefined) {
     const price = Number(body.price);
@@ -72,7 +72,10 @@ const buildProductUpdateData = body => {
 exports.getAllProductsForAdmin = async (req, res) => {
   try {
     const products = await prisma.product.findMany({
-      include: { category: true },
+      include: { 
+        category: true,
+        images: true
+      },
       orderBy: { createdAt: "desc" }
     });
 
@@ -92,7 +95,10 @@ exports.getProductsByCategoryForAdmin = async (req, res) => {
 
     const products = await prisma.product.findMany({
       where: { categoryId },
-      include: { category: true },
+      include: { 
+        category: true,
+        images: true
+      },
       orderBy: { createdAt: "desc" }
     });
 
@@ -116,12 +122,9 @@ exports.updateProductForAdmin = async (req, res) => {
       return res.status(400).json({ error });
     }
 
-    if (Object.keys(data).length === 0) {
-      return res.status(400).json({ error: "No fields provided for update" });
-    }
-
     const existingProduct = await prisma.product.findUnique({
-      where: { id: productId }
+      where: { id: productId },
+      include: { images: true }
     });
 
     if (!existingProduct) {
@@ -138,10 +141,48 @@ exports.updateProductForAdmin = async (req, res) => {
       }
     }
 
+    // Handle new image uploads
+    if (req.files && req.files.length > 0) {
+      // Option 1: Replace all images (delete old ones)
+      const shouldReplaceImages = req.body.replaceImages === "true";
+
+      if (shouldReplaceImages) {
+        // Delete old image files
+        for (const image of existingProduct.images) {
+          deleteImageFile(image.imageUrl);
+        }
+        // Delete old image records
+        await prisma.productImage.deleteMany({
+          where: { productId }
+        });
+      }
+
+      // Add new image records and update primary image to first uploaded
+      const imageUrls = req.files.map(file => getImageUrlPath(file.filename));
+      for (const imageUrl of imageUrls) {
+        await prisma.productImage.create({
+          data: {
+            productId,
+            imageUrl
+          }
+        });
+      }
+
+      // Update product's primary image to first uploaded image
+      data.imageUrl = imageUrls[0];
+    }
+
+    if (Object.keys(data).length === 0 && (!req.files || req.files.length === 0)) {
+      return res.status(400).json({ error: "No fields provided for update" });
+    }
+
     const product = await prisma.product.update({
       where: { id: productId },
       data,
-      include: { category: true }
+      include: { 
+        category: true,
+        images: true
+      }
     });
 
     res.status(200).json({
@@ -149,6 +190,14 @@ exports.updateProductForAdmin = async (req, res) => {
       product
     });
   } catch (error) {
+    // Delete uploaded files if update fails
+    if (req.files && req.files.length > 0) {
+      req.files.forEach(file => {
+        deleteImageFile(file.path);
+      });
+    }
+
+    console.error("Error updating product:", error);
     res.status(500).json({ error: "Failed to update product" });
   }
 };
@@ -162,13 +211,20 @@ exports.deleteProductForAdmin = async (req, res) => {
     }
 
     const existingProduct = await prisma.product.findUnique({
-      where: { id: productId }
+      where: { id: productId },
+      include: { images: true }
     });
 
     if (!existingProduct) {
       return res.status(404).json({ error: "Product not found" });
     }
 
+    // Delete image files from filesystem
+    for (const image of existingProduct.images) {
+      deleteImageFile(image.imageUrl);
+    }
+
+    // Delete product and related images (due to cascade delete)
     await prisma.product.delete({
       where: { id: productId }
     });
@@ -183,6 +239,7 @@ exports.deleteProductForAdmin = async (req, res) => {
       });
     }
 
+    console.error("Error deleting product:", error);
     res.status(500).json({ error: "Failed to delete product" });
   }
 };

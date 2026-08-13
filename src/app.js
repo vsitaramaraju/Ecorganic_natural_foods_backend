@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
 const prisma = require("./utils/prisma");
 const authRoutes = require("../routes/authRoutes");
 const productRoutes = require("../routes/productRoutes");
@@ -22,6 +23,9 @@ app.use(
   })
 );
 app.use(express.json());
+
+// Serve static files from uploads folder
+app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/categories", categoryRoutes);
