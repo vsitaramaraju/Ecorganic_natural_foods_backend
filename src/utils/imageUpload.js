@@ -48,7 +48,7 @@ const upload = multer({
 // Helper function to delete a file
 const deleteImageFile = (filePath) => {
   try {
-    const fullPath = path.join(uploadsDir, filePath.split("/uploads/")[1]);
+    const fullPath = path.join(uploadsDir, filePath.split("uploads/")[1]);
     if (fs.existsSync(fullPath)) {
       fs.unlinkSync(fullPath);
     }
