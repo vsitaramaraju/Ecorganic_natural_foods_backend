@@ -1,55 +1,30 @@
 const express = require("express");
-const prisma = require("../src/utils/prisma");
+const {
+  getAllUsers,
+  updateUser,
+  updateUserRole,
+  deleteUser
+} = require("../controllers/adminUserController");
+const {
+  authenticateToken,
+  authorizeAdmin
+} = require("../middlewares/authMiddleware");
 
 const router = express.Router();
 
+// All routes below are admin-only
+router.use(authenticateToken, authorizeAdmin);
+
 // Get all users
-router.get("/users", async (req, res) => {
-  try {
-    const users = await prisma.user.findMany({
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        createdAt: true
-      },
-      orderBy: {
-        createdAt: "desc"
-      }
-    });
+router.get("/users", getAllUsers);
 
-    res.json(users);
-  } catch (error) {
-    console.error("Get users error:", error);
-    res.status(500).json({
-      message: "Failed to fetch users"
-    });
-  }
-});
+// Edit a user (name / email / phone / role)
+router.put("/users/:id", updateUser);
 
-// Update user role
-router.put("/users/:id/role", async (req, res) => {
-  try {
-    const userId = Number(req.params.id);
-    const { role } = req.body;
+// Update user role only (kept for backward compatibility with existing callers)
+router.put("/users/:id/role", updateUserRole);
 
-    const user = await prisma.user.update({
-      where: {
-        id: userId
-      },
-      data: {
-        role
-      }
-    });
-
-    res.json(user);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({
-      message: "Failed to update role"
-    });
-  }
-});
+// Delete a user
+router.delete("/users/:id", deleteUser);
 
 module.exports = router;
