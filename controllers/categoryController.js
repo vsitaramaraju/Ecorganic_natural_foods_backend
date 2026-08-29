@@ -1,5 +1,9 @@
 const prisma = require("../src/utils/prisma");
-const { getImageUrlPath, deleteImageFile } = require("../src/utils/imageUpload");
+const {
+  getImageUrlPath,
+  deleteImageFile
+} = require("../src/utils/imageUpload");
+const { emitToCustomers } = require("../src/socket");
 
 exports.createCategory = async (req, res) => {
   try {
@@ -45,6 +49,13 @@ exports.createCategory = async (req, res) => {
     });
 
     res.status(201).json(updatedCategory);
+
+    // Notify connected customers in real time instead of making them poll.
+    emitToCustomers("category:new", {
+      id: updatedCategory.id,
+      name: updatedCategory.name,
+      image: updatedCategory.images?.[0]?.imageUrl || updatedCategory.imageUrl
+    });
   } catch (error) {
     // Delete uploaded files if category creation fails
     if (req.files && req.files.length > 0) {
@@ -56,9 +67,11 @@ exports.createCategory = async (req, res) => {
     if (error.code === "P2002") {
       return res.status(409).json({ error: "Category already exists" });
     }
-    
+
     console.error("Error creating category:", error);
-    res.status(500).json({ error: error.message || "Failed to create category" });
+    res
+      .status(500)
+      .json({ error: error.message || "Failed to create category" });
   }
 };
 
@@ -154,7 +167,10 @@ exports.updateCategory = async (req, res) => {
       data.imageUrl = imageUrls[0];
     }
 
-    if (Object.keys(data).length === 0 && (!req.files || req.files.length === 0)) {
+    if (
+      Object.keys(data).length === 0 &&
+      (!req.files || req.files.length === 0)
+    ) {
       return res.status(400).json({ error: "No fields provided for update" });
     }
 
@@ -179,7 +195,7 @@ exports.updateCategory = async (req, res) => {
     if (error.code === "P2002") {
       return res.status(409).json({ error: "Category already exists" });
     }
-    
+
     console.error("Error updating category:", error);
     res.status(500).json({ error: "Failed to update category" });
   }

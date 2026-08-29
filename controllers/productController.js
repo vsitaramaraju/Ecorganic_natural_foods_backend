@@ -1,6 +1,10 @@
 const prisma = require("../src/utils/prisma");
 const { isValidPriceUnit } = require("../src/utils/priceUnit");
-const { getImageUrlPath, deleteImageFile } = require("../src/utils/imageUpload");
+const {
+  getImageUrlPath,
+  deleteImageFile
+} = require("../src/utils/imageUpload");
+const { emitToCustomers } = require("../src/socket");
 
 const publicReviewInclude = {
   user: {
@@ -31,14 +35,15 @@ const buildReviewSummary = reviews => {
 
 exports.createProduct = async (req, res) => {
   try {
-    const { name, description, price, categoryId, stock, priceUnit } =
-      req.body;
+    const { name, description, price, categoryId, stock, priceUnit } = req.body;
 
     // Debug: Log incoming values and their types
     console.log("=== Product Creation Request ===");
     console.log("Incoming data:");
     console.log(`  name: "${name}" (type: ${typeof name})`);
-    console.log(`  description: "${description}" (type: ${typeof description})`);
+    console.log(
+      `  description: "${description}" (type: ${typeof description})`
+    );
     console.log(`  price: "${price}" (type: ${typeof price})`);
     console.log(`  categoryId: "${categoryId}" (type: ${typeof categoryId})`);
     console.log(`  stock: "${stock}" (type: ${typeof stock})`);
@@ -131,6 +136,13 @@ exports.createProduct = async (req, res) => {
 
     res.status(201).json(updatedProduct);
     console.log("✓ Product created successfully!");
+
+    // Notify connected customers in real time instead of making them poll.
+    emitToCustomers("product:new", {
+      id: updatedProduct.id,
+      name: updatedProduct.name,
+      image: updatedProduct.images?.[0]?.imageUrl || updatedProduct.imageUrl
+    });
   } catch (error) {
     // Delete uploaded files if product creation fails
     if (req.files && req.files.length > 0) {
@@ -148,8 +160,8 @@ exports.createProduct = async (req, res) => {
       console.error("Invalid argument:", error.meta.argument);
     }
     console.error("Full error:", error);
-    
-    res.status(500).json({ 
+
+    res.status(500).json({
       error: error.message,
       details: error.meta || null
     });
@@ -159,7 +171,7 @@ exports.createProduct = async (req, res) => {
 exports.getProducts = async (req, res) => {
   try {
     const products = await prisma.product.findMany({
-      include: { 
+      include: {
         category: true,
         images: true
       }
@@ -181,7 +193,7 @@ exports.getProductsByCategory = async (req, res) => {
 
     const products = await prisma.product.findMany({
       where: { categoryId },
-      include: { 
+      include: {
         category: true,
         images: true
       }
@@ -275,7 +287,7 @@ exports.searchProducts = async (req, res) => {
     // Fetch products with filters
     const products = await prisma.product.findMany({
       where,
-      include: { 
+      include: {
         category: true,
         images: true
       },

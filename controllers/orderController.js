@@ -1,6 +1,7 @@
 const prisma = require("../src/utils/prisma");
 const { evaluateCoupon } = require("../src/utils/couponUtils");
 const { unitLabel } = require("../src/utils/priceUnit");
+const { emitToUser } = require("../src/socket");
 
 exports.createOrder = async (req, res) => {
   try {
@@ -236,6 +237,31 @@ exports.updateOrderStatus = async (req, res) => {
     });
 
     res.json(order);
+
+    // Let the customer know their order status changed, in real time,
+    // without them having to poll for it.
+    const orderWithItems = await prisma.order.findUnique({
+      where: { id: order.id },
+      include: {
+        items: {
+          include: { product: { include: { images: true } } }
+        }
+      }
+    });
+
+    if (orderWithItems) {
+      const firstItem = orderWithItems.items?.[0];
+      emitToUser(orderWithItems.userId, "order:status", {
+        orderId: orderWithItems.id,
+        status: orderWithItems.status,
+        productName: firstItem?.product?.name || "Your order",
+        image:
+          firstItem?.product?.images?.[0]?.imageUrl ||
+          firstItem?.product?.imageUrl ||
+          null,
+        extraCount: Math.max((orderWithItems.items?.length || 1) - 1, 0)
+      });
+    }
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

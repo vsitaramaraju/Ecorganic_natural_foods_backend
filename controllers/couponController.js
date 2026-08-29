@@ -3,6 +3,7 @@ const {
   evaluateCoupon,
   getActiveCouponWhere
 } = require("../src/utils/couponUtils");
+const { emitToCustomers } = require("../src/socket");
 
 const VALID_TYPES = ["GENERAL", "NEW_USER", "SEASONAL"];
 
@@ -59,6 +60,16 @@ exports.createCoupon = async (req, res) => {
     });
 
     res.status(201).json(coupon);
+
+    // Only worth telling customers about coupons they can actually use.
+    if (coupon.isActive) {
+      emitToCustomers("coupon:new", {
+        code: coupon.code,
+        description: coupon.description,
+        discountPercent: coupon.discountPercent,
+        maxDiscountAmount: coupon.maxDiscountAmount
+      });
+    }
   } catch (error) {
     if (error.code === "P2002") {
       return res.status(400).json({ message: "Coupon code already exists" });
