@@ -3,7 +3,7 @@ const {
   evaluateCoupon,
   getActiveCouponWhere
 } = require("../src/utils/couponUtils");
-const { emitToCustomers } = require("../src/socket");
+const { createAndBroadcastNotification } = require("../src/utils/notify");
 
 const VALID_TYPES = ["GENERAL", "NEW_USER", "SEASONAL"];
 
@@ -63,11 +63,27 @@ exports.createCoupon = async (req, res) => {
 
     // Only worth telling customers about coupons they can actually use.
     if (coupon.isActive) {
-      emitToCustomers("coupon:new", {
-        code: coupon.code,
-        description: coupon.description,
-        discountPercent: coupon.discountPercent,
-        maxDiscountAmount: coupon.maxDiscountAmount
+      const discountText = coupon.discountPercent
+        ? `${coupon.discountPercent}% off`
+        : coupon.maxDiscountAmount
+          ? `₹${coupon.maxDiscountAmount} off`
+          : "a special discount";
+
+      createAndBroadcastNotification({
+        audience: "BROADCAST",
+        type: "coupon",
+        title: "New coupon added",
+        message: `Use code ${coupon.code} for ${discountText}${
+          coupon.description ? ` — ${coupon.description}` : ""
+        }.`,
+        link: "/coupons",
+        socketEvent: "coupon:new",
+        socketPayload: {
+          code: coupon.code,
+          description: coupon.description,
+          discountPercent: coupon.discountPercent,
+          maxDiscountAmount: coupon.maxDiscountAmount
+        }
       });
     }
   } catch (error) {

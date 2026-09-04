@@ -5,9 +5,9 @@ const prisma = require("./utils/prisma");
 let io = null;
 
 /**
- * Real-time layer for customer notifications (new products/categories/
- * coupons, and a signed-in user's own order status changes) so the
- * frontend no longer has to poll the REST API on an interval.
+ * Real-time layer for notifications (new products/categories/coupons, a
+ * signed-in customer's own order status changes, and new orders for
+ * admins) so neither side has to poll the REST API on an interval.
  *
  * Rooms:
  *  - `user:<id>`   every authenticated socket joins its own room, used for
@@ -16,6 +16,9 @@ let io = null;
  *                   used for store-wide announcements (new product/category/
  *                   active coupon). Admins don't join it since they're the
  *                   ones creating that content.
+ *  - `admins`      every authenticated admin socket joins this room, used
+ *                   for events admins need to know about (a customer placed
+ *                   a new order).
  */
 function initSocket(httpServer) {
   io = new Server(httpServer, {
@@ -54,7 +57,9 @@ function initSocket(httpServer) {
   io.on("connection", socket => {
     if (socket.user) {
       socket.join(`user:${socket.user.id}`);
-      if (String(socket.user.role).toUpperCase() !== "ADMIN") {
+      if (String(socket.user.role).toUpperCase() === "ADMIN") {
+        socket.join("admins");
+      } else {
         socket.join("customers");
       }
     }
@@ -79,4 +84,16 @@ function emitToUser(userId, event, payload) {
   io.to(`user:${userId}`).emit(event, payload);
 }
 
-module.exports = { initSocket, getIO, emitToCustomers, emitToUser };
+// Broadcast to every currently-connected admin, e.g. a new order came in.
+function emitToAdmins(event, payload) {
+  if (!io) return;
+  io.to("admins").emit(event, payload);
+}
+
+module.exports = {
+  initSocket,
+  getIO,
+  emitToCustomers,
+  emitToUser,
+  emitToAdmins
+};

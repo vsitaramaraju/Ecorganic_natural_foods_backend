@@ -1,11 +1,11 @@
 const express = require("express");
 const { authenticateToken } = require("../middlewares/authMiddleware");
 const {
-    addToWishlist,
-    getWishlist,
-    removeFromWishlist,
-    checkWishlistItem,
-    clearWishlist,
+  addToWishlist,
+  getWishlist,
+  removeFromWishlist,
+  checkWishlistItem,
+  clearWishlist
 } = require("../controllers/wishlistController");
 
 const router = express.Router();

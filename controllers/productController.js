@@ -4,7 +4,7 @@ const {
   getImageUrlPath,
   deleteImageFile
 } = require("../src/utils/imageUpload");
-const { emitToCustomers } = require("../src/socket");
+const { createAndBroadcastNotification } = require("../src/utils/notify");
 
 const publicReviewInclude = {
   user: {
@@ -137,11 +137,23 @@ exports.createProduct = async (req, res) => {
     res.status(201).json(updatedProduct);
     console.log("✓ Product created successfully!");
 
-    // Notify connected customers in real time instead of making them poll.
-    emitToCustomers("product:new", {
-      id: updatedProduct.id,
-      name: updatedProduct.name,
-      image: updatedProduct.images?.[0]?.imageUrl || updatedProduct.imageUrl
+    // Notify customers - live for whoever's connected, persisted for
+    // everyone else so it's waiting for them next time they log in.
+    const productImage =
+      updatedProduct.images?.[0]?.imageUrl || updatedProduct.imageUrl;
+    createAndBroadcastNotification({
+      audience: "BROADCAST",
+      type: "product",
+      title: "New product added",
+      message: `"${updatedProduct.name}" just landed in the store.`,
+      image: productImage,
+      link: `/product/${updatedProduct.id}`,
+      socketEvent: "product:new",
+      socketPayload: {
+        id: updatedProduct.id,
+        name: updatedProduct.name,
+        image: productImage
+      }
     });
   } catch (error) {
     // Delete uploaded files if product creation fails

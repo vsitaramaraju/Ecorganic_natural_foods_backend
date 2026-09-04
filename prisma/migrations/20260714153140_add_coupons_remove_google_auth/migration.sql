@@ -5,7 +5,7 @@
 
 */
 -- DropIndex
-DROP INDEX "User_googleId_key";
+DROP INDEX IF EXISTS "User_googleId_key";
 
 -- AlterTable
 ALTER TABLE "Order" ADD COLUMN     "couponCode" TEXT,

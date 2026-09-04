@@ -15,6 +15,8 @@ const adminRoutes = require("../routes/adminRoutes");
 const couponRoutes = require("../routes/couponRoutes");
 const adminCouponRoutes = require("../routes/adminCouponRoutes");
 const contactRoutes = require("../routes/contactRoutes");
+const notificationRoutes = require("../routes/notificationRoutes");
+const adminNotificationRoutes = require("../routes/adminNotificationRoutes");
 
 const app = express();
 app.use(
@@ -40,6 +42,8 @@ app.use("/api/coupons", couponRoutes);
 app.use("/api/admin/coupons", adminCouponRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/contact", contactRoutes);
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/admin/notifications", adminNotificationRoutes);
 
 app.get("/", (req, res) => {
   res.send("Welcome to Eco Organic Natural Foods API");

@@ -7,20 +7,48 @@ datasource db {
 }
 
 model User {
-  id               Int        @id @default(autoincrement())
-  name             String
-  email            String     @unique
-  password         String?
+  id                  Int        @id @default(autoincrement())
+  name                String
+  email               String     @unique
+  password            String?
   phone     String?
-  role             String     @default("USER")
-  createdAt        DateTime   @default(now())
-  resetToken       String?
-  resetTokenExpiry DateTime?
-  addresses        Address[]
-  cartItems        CartItem[]
-  orders           Order[]
-  wishlists        Wishlist[]
-  reviews          Review[]
+  role                String     @default("USER")
+  createdAt           DateTime   @default(now())
+  resetToken          String?
+  resetTokenExpiry    DateTime?
+  notificationsReadAt DateTime?
+  addresses           Address[]
+  cartItems           CartItem[]
+  orders              Order[]
+  wishlists           Wishlist[]
+  reviews             Review[]
+  notifications       Notification[]
+}
+
+// A single feed row per event. `audience` decides who can see it:
+//  - "BROADCAST" -> every customer (new product/category/active coupon)
+//  - "USER"      -> exactly one customer, via `userId` (their own order's
+//                    status changed)
+//  - "ADMIN"     -> every admin account (a customer placed a new order)
+// Persisted here (in addition to the live socket emit) so anyone - admin
+// or customer - who was logged out/offline when the event happened still
+// sees it the next time they open their account, instead of it only ever
+// reaching whoever happened to be connected at that instant.
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  audience  String   @default("BROADCAST") // "BROADCAST" | "USER" | "ADMIN"
+  type      String // "product" | "category" | "coupon" | "order" | "new_order"
+  title     String
+  message   String
+  image     String?
+  link      String?
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([audience])
 }
 
 model Category {

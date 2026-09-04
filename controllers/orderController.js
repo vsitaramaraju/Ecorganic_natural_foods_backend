@@ -1,7 +1,18 @@
 const prisma = require("../src/utils/prisma");
 const { evaluateCoupon } = require("../src/utils/couponUtils");
 const { unitLabel } = require("../src/utils/priceUnit");
-const { emitToUser } = require("../src/socket");
+const { createAndBroadcastNotification } = require("../src/utils/notify");
+
+// Kept in sync with the frontend's ORDER_STATUS_LABELS (src/utils/useNotifications.js)
+// so a notification reads the same whether it arrived live or was fetched later.
+const ORDER_STATUS_LABELS = {
+  PENDING: "placed and is awaiting confirmation",
+  CONFIRMED: "confirmed",
+  SHIPPED: "shipped",
+  OUT_FOR_DELIVERY: "out for delivery",
+  DELIVERED: "delivered",
+  CANCELLED: "cancelled"
+};
 
 exports.createOrder = async (req, res) => {
   try {
@@ -130,6 +141,24 @@ exports.createOrder = async (req, res) => {
     });
 
     res.status(201).json(order);
+
+    // Let admins know a new order came in - live if one's connected right
+    // now, persisted so it's waiting in their notification list either way.
+    const itemCount = order.items.reduce((sum, i) => sum + i.quantity, 0);
+    createAndBroadcastNotification({
+      audience: "ADMIN",
+      type: "new_order",
+      title: `New order #${order.id}`,
+      message: `${req.user.name || "A customer"} placed an order for ₹${order.totalAmount.toFixed(2)} (${itemCount} item${itemCount === 1 ? "" : "s"}).`,
+      link: `/admin/orders?order=${order.id}`,
+      socketEvent: "order:new",
+      socketPayload: {
+        orderId: order.id,
+        customerName: req.user.name,
+        amount: order.totalAmount,
+        itemCount
+      }
+    });
   } catch (error) {
     // Stock ran out for someone mid-checkout (race condition caught inside
     // the transaction) — this is a client-fixable conflict, not a server
@@ -251,15 +280,37 @@ exports.updateOrderStatus = async (req, res) => {
 
     if (orderWithItems) {
       const firstItem = orderWithItems.items?.[0];
-      emitToUser(orderWithItems.userId, "order:status", {
-        orderId: orderWithItems.id,
-        status: orderWithItems.status,
-        productName: firstItem?.product?.name || "Your order",
-        image:
-          firstItem?.product?.images?.[0]?.imageUrl ||
-          firstItem?.product?.imageUrl ||
-          null,
-        extraCount: Math.max((orderWithItems.items?.length || 1) - 1, 0)
+      const statusKey = String(orderWithItems.status || "").toUpperCase();
+      const label = ORDER_STATUS_LABELS[statusKey] || statusKey.toLowerCase();
+      const extraCount = Math.max((orderWithItems.items?.length || 1) - 1, 0);
+      const itemsSuffix =
+        extraCount > 0
+          ? ` + ${extraCount} more item${extraCount === 1 ? "" : "s"}`
+          : "";
+      const productName = firstItem?.product?.name || "Your order";
+      const image =
+        firstItem?.product?.images?.[0]?.imageUrl ||
+        firstItem?.product?.imageUrl ||
+        null;
+
+      // Notify the customer - live if they're connected, persisted so it's
+      // waiting for them next time they log in if they weren't.
+      createAndBroadcastNotification({
+        audience: "USER",
+        userId: orderWithItems.userId,
+        type: "order",
+        title: `${productName}${itemsSuffix}`,
+        message: `Your order has been ${label}.`,
+        image,
+        link: "/orders",
+        socketEvent: "order:status",
+        socketPayload: {
+          orderId: orderWithItems.id,
+          status: orderWithItems.status,
+          productName,
+          image,
+          extraCount
+        }
       });
     }
   } catch (error) {

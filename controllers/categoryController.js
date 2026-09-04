@@ -3,7 +3,7 @@ const {
   getImageUrlPath,
   deleteImageFile
 } = require("../src/utils/imageUpload");
-const { emitToCustomers } = require("../src/socket");
+const { createAndBroadcastNotification } = require("../src/utils/notify");
 
 exports.createCategory = async (req, res) => {
   try {
@@ -50,11 +50,23 @@ exports.createCategory = async (req, res) => {
 
     res.status(201).json(updatedCategory);
 
-    // Notify connected customers in real time instead of making them poll.
-    emitToCustomers("category:new", {
-      id: updatedCategory.id,
-      name: updatedCategory.name,
-      image: updatedCategory.images?.[0]?.imageUrl || updatedCategory.imageUrl
+    // Notify customers - live for whoever's connected, persisted for
+    // everyone else so it's waiting for them next time they log in.
+    const categoryImage =
+      updatedCategory.images?.[0]?.imageUrl || updatedCategory.imageUrl;
+    createAndBroadcastNotification({
+      audience: "BROADCAST",
+      type: "category",
+      title: "New category added",
+      message: `Check out the new "${updatedCategory.name}" collection.`,
+      image: categoryImage,
+      link: "/categories",
+      socketEvent: "category:new",
+      socketPayload: {
+        id: updatedCategory.id,
+        name: updatedCategory.name,
+        image: categoryImage
+      }
     });
   } catch (error) {
     // Delete uploaded files if category creation fails
