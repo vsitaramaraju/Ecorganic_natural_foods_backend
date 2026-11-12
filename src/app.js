@@ -25,6 +25,14 @@ app.use(
     credentials: true
   })
 );
+// Razorpay webhook: needs the raw body to check the signature, so it is mounted
+// before express.json(). No auth/CORS involved - Razorpay's servers call it directly.
+app.post(
+  "/api/payments/razorpay/webhook",
+  express.raw({ type: "*/*", limit: "1mb" }),
+  require("../controllers/orderController").razorpayWebhook
+);
+
 app.use(express.json());
 
 // Serve static files from uploads folder

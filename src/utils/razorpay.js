@@ -86,9 +86,23 @@ const isValidPaymentSignature = (razorpayOrderId, razorpayPaymentId, signature) 
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 };
 
+// Checks the X-Razorpay-Signature header on a webhook. `rawBody` must be the exact
+// bytes Razorpay sent (a Buffer), not re-serialised JSON.
+const isValidWebhookSignature = (rawBody, signature) => {
+  const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+  if (!secret || !Buffer.isBuffer(rawBody) || typeof signature !== "string") return false;
+  const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+  const a = Buffer.from(expected);
+  const b = Buffer.from(signature);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+};
+
 // Razorpay refund status -> our paymentStatus.
-const refundStatusToPaymentStatus = refundStatus =>
-  refundStatus === "processed" ? "REFUNDED" : "REFUND_PENDING";
+const refundStatusToPaymentStatus = refundStatus => {
+  if (refundStatus === "processed") return "REFUNDED";
+  if (refundStatus === "failed") return "REFUND_FAILED";
+  return "REFUND_PENDING";
+};
 
 module.exports = {
   RazorpayError,
@@ -101,5 +115,6 @@ module.exports = {
   refundPayment,
   fetchRefund,
   isValidPaymentSignature,
+  isValidWebhookSignature,
   refundStatusToPaymentStatus
 };

@@ -304,6 +304,78 @@ async function refundUnusedPayment(paymentId, amountPaise, reason) {
   }
 }
 
+// Turns a Razorpay payment into a confirmed shop order. Shared by /verify (the browser)
+// and the webhook (Razorpay's servers), so whichever arrives first creates the order and
+// the other just gets it back. Returns { order, created }.
+// `expectedUserId` is set when called by a signed-in customer.
+async function fulfillRazorpayPayment({ razorpayOrderId, razorpayPaymentId, expectedUserId }) {
+  const findExisting = () => prisma.order.findUnique({ where: { razorpayOrderId } });
+
+  const existing = await findExisting();
+  if (existing) {
+    if (expectedUserId && existing.userId !== expectedUserId) {
+      throw new HttpError(403, "This payment belongs to another account");
+    }
+    return { order: existing, created: false };
+  }
+
+  const rzpOrder = await razorpay.fetchRazorpayOrder(razorpayOrderId);
+  const userId = Number(rzpOrder.notes?.userId);
+  if (!Number.isInteger(userId) || userId <= 0) {
+    throw new HttpError(400, "This payment isn't linked to a customer");
+  }
+  if (expectedUserId && userId !== expectedUserId) {
+    throw new HttpError(403, "This payment belongs to another account");
+  }
+
+  let payment = await razorpay.fetchPayment(razorpayPaymentId);
+  if (payment.order_id !== razorpayOrderId) {
+    throw new HttpError(400, "Payment does not match this order");
+  }
+  if (payment.status === "authorized") {
+    payment = await razorpay.capturePayment(razorpayPaymentId, payment.amount);
+  }
+  if (payment.status !== "captured") {
+    throw new HttpError(402, `Payment was not completed (status: ${payment.status})`);
+  }
+
+  // From here on we hold the customer's money: any failure must refund it.
+  try {
+    const checkout = await prepareCheckout(userId, {
+      addressId: rzpOrder.notes?.addressId,
+      couponCode: rzpOrder.notes?.couponCode || undefined
+    });
+    if (razorpay.toPaise(checkout.totalAmount) !== payment.amount) {
+      throw new HttpError(409, "Your cart changed while you were paying");
+    }
+    const order = await createOrderRecord(userId, checkout, {
+      paymentMethod: "RAZORPAY",
+      paymentStatus: "PAID",
+      payment: { razorpayOrderId, razorpayPaymentId }
+    });
+    return { order, created: true };
+  } catch (error) {
+    // The browser and the webhook can arrive together: if the other one placed the
+    // order (and so emptied the cart), this failure is expected - never refund then.
+    const raced = await findExisting().catch(() => null);
+    if (raced) return { order: raced, created: false };
+
+    const refunded = await refundUnusedPayment(
+      razorpayPaymentId,
+      payment.amount,
+      "Order could not be placed"
+    );
+    const reason = error instanceof HttpError ? error.message : "We couldn't place your order";
+    throw new HttpError(
+      409,
+      refunded
+        ? `${reason}. Your payment has been refunded and will reach your account in 5-7 working days.`
+        : `${reason}. Please contact support with payment ID ${razorpayPaymentId} for a refund.`,
+      { refunded }
+    );
+  }
+}
+
 // POST /api/orders/razorpay/verify - step 2: Razorpay Checkout reports success; verify
 // the signature, make sure the money is captured, then create the (confirmed) order.
 exports.verifyRazorpayPayment = async (req, res) => {
@@ -318,68 +390,109 @@ exports.verifyRazorpayPayment = async (req, res) => {
       throw new HttpError(400, "Payment verification failed. If money was deducted it will be refunded automatically by your bank or Razorpay.");
     }
 
-    // Already turned into an order (e.g. the browser retried)? Return that order.
-    const existing = await prisma.order.findUnique({ where: { razorpayOrderId } });
-    if (existing) {
-      if (existing.userId !== req.user.id) throw new HttpError(403, "This payment belongs to another account");
-      return res.status(200).json(existing);
-    }
+    const { order, created } = await fulfillRazorpayPayment({
+      razorpayOrderId,
+      razorpayPaymentId,
+      expectedUserId: req.user.id
+    });
 
-    const rzpOrder = await razorpay.fetchRazorpayOrder(razorpayOrderId);
-    if (String(rzpOrder.notes?.userId) !== String(req.user.id)) {
-      throw new HttpError(403, "This payment belongs to another account");
-    }
-
-    let payment = await razorpay.fetchPayment(razorpayPaymentId);
-    if (payment.order_id !== razorpayOrderId) {
-      throw new HttpError(400, "Payment does not match this order");
-    }
-    if (payment.status === "authorized") {
-      payment = await razorpay.capturePayment(razorpayPaymentId, payment.amount);
-    }
-    if (payment.status !== "captured") {
-      throw new HttpError(402, `Payment was not completed (status: ${payment.status})`);
-    }
-
-    // From here on we hold the customer's money: any failure must refund it.
-    let order;
-    try {
-      const checkout = await prepareCheckout(req.user.id, {
-        addressId: rzpOrder.notes?.addressId,
-        couponCode: rzpOrder.notes?.couponCode || undefined
-      });
-      if (razorpay.toPaise(checkout.totalAmount) !== payment.amount) {
-        throw new HttpError(409, "Your cart changed while you were paying");
-      }
-      order = await createOrderRecord(req.user.id, checkout, {
-        paymentMethod: "RAZORPAY",
-        paymentStatus: "PAID",
-        payment: { razorpayOrderId, razorpayPaymentId }
-      });
-    } catch (error) {
-      // A parallel request already created the order for this payment.
-      if (error?.code === "P2002") {
-        const raced = await prisma.order.findUnique({ where: { razorpayOrderId } });
-        if (raced) return res.status(200).json(raced);
-      }
-      const refunded = await refundUnusedPayment(
-        razorpayPaymentId,
-        payment.amount,
-        "Order could not be placed"
-      );
-      const reason = error instanceof HttpError ? error.message : "We couldn't place your order";
-      throw new HttpError(
-        409,
-        refunded
-          ? `${reason}. Your payment has been refunded and will reach your account in 5-7 working days.`
-          : `${reason}. Please contact support with payment ID ${razorpayPaymentId} for a refund.`
-      );
-    }
-
-    res.status(201).json(order);
-    announceNewOrder(order, req.user);
+    res.status(created ? 201 : 200).json(order);
+    if (created) announceNewOrder(order, req.user);
   } catch (error) {
     sendError(res, error);
+  }
+};
+
+// GET /api/orders/payment-config - lets the checkout page decide whether to offer
+// online payment. The key id is public by design; the secret never leaves the server.
+exports.getPaymentConfig = (req, res) => {
+  const enabled = razorpay.isRazorpayConfigured();
+  res.json({
+    razorpayEnabled: enabled,
+    keyId: enabled ? process.env.RAZORPAY_KEY_ID : null,
+    methods: enabled ? ["COD", "RAZORPAY"] : ["COD"]
+  });
+};
+
+// POST /api/payments/razorpay/webhook - Razorpay's servers tell us about payments and
+// refunds. This is the safety net for customers who close the tab after paying (so
+// /verify never runs) and the way pending refunds become REFUNDED.
+// Returns 2xx for anything handled or not retryable; 5xx makes Razorpay retry.
+exports.razorpayWebhook = async (req, res) => {
+  if (!razorpay.isValidWebhookSignature(req.body, req.get("x-razorpay-signature"))) {
+    return res.status(400).json({ message: "Invalid signature" });
+  }
+
+  let event;
+  try {
+    event = JSON.parse(req.body.toString("utf8"));
+  } catch {
+    return res.status(400).json({ message: "Invalid JSON" });
+  }
+
+  const payment = event?.payload?.payment?.entity;
+  const refund = event?.payload?.refund?.entity;
+
+  try {
+    switch (event.event) {
+      case "payment.authorized":
+      case "payment.captured":
+      case "order.paid": {
+        if (!payment?.order_id || !payment?.id) break; // not a Checkout order payment
+        try {
+          const { order, created } = await fulfillRazorpayPayment({
+            razorpayOrderId: payment.order_id,
+            razorpayPaymentId: payment.id
+          });
+          if (created) {
+            const user = await prisma.user.findUnique({
+              where: { id: order.userId },
+              select: { name: true }
+            });
+            announceNewOrder(order, user || {});
+          }
+        } catch (error) {
+          // Business failures (already refunded, cart changed, ...) won't fix themselves
+          // on retry, so acknowledge them; let real outages bubble up for a retry.
+          if (error instanceof HttpError) {
+            console.warn(`Razorpay webhook ${event.event} for ${payment.id}: ${error.message}`);
+          } else {
+            throw error;
+          }
+        }
+        break;
+      }
+
+      case "refund.processed":
+      case "refund.failed": {
+        if (!refund?.id) break;
+        const paymentStatus = razorpay.refundStatusToPaymentStatus(refund.status);
+        const result = await prisma.order.updateMany({
+          where: { refundId: refund.id, paymentStatus: { not: paymentStatus } },
+          data: { paymentStatus }
+        });
+        if (result.count > 0 && paymentStatus === "REFUND_FAILED") {
+          const order = await prisma.order.findFirst({ where: { refundId: refund.id } });
+          createAndBroadcastNotification({
+            audience: "ADMIN",
+            type: "refund_failed",
+            title: `Refund failed for order #${order?.id}`,
+            message: `Razorpay could not refund ${formatRupees(refund.amount / 100)} (refund ${refund.id}). Please refund it from the Razorpay dashboard.`,
+            link: order ? `/admin/orders/${order.id}` : "/admin/orders",
+            socketEvent: "order:refund_failed",
+            socketPayload: { orderId: order?.id, refundId: refund.id }
+          });
+        }
+        break;
+      }
+
+      default:
+        break; // events we don't use
+    }
+    res.json({ ok: true });
+  } catch (error) {
+    console.error(`Razorpay webhook ${event.event} failed:`, error);
+    res.status(500).json({ message: "Webhook processing failed" });
   }
 };
 
