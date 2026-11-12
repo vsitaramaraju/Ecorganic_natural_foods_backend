@@ -1,7 +1,6 @@
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
-const prisma = require("./utils/prisma");
 const authRoutes = require("../routes/authRoutes");
 const productRoutes = require("../routes/productRoutes");
 const categoryRoutes = require("../routes/categoryRoutes");
@@ -17,6 +16,7 @@ const adminCouponRoutes = require("../routes/adminCouponRoutes");
 const contactRoutes = require("../routes/contactRoutes");
 const notificationRoutes = require("../routes/notificationRoutes");
 const adminNotificationRoutes = require("../routes/adminNotificationRoutes");
+const homeBannerRoutes = require("../routes/homeBannerRoutes");
 
 const app = express();
 app.use(
@@ -40,6 +40,8 @@ app.use("/api/admin/products", adminProductRoutes);
 app.use("/api/wishlist", wishlistRoutes);
 app.use("/api/coupons", couponRoutes);
 app.use("/api/admin/coupons", adminCouponRoutes);
+app.use("/api/home-banner", homeBannerRoutes.publicRouter);
+app.use("/api/admin/home-banner", homeBannerRoutes.adminRouter);
 app.use("/api/admin", adminRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/notifications", notificationRoutes);
@@ -47,11 +49,6 @@ app.use("/api/admin/notifications", adminNotificationRoutes);
 
 app.get("/", (req, res) => {
   res.send("Welcome to Eco Organic Natural Foods API");
-});
-
-app.get("/test-db", async (req, res) => {
-  const users = await prisma.user.findMany();
-  res.json(users);
 });
 
 module.exports = app;

@@ -92,6 +92,7 @@ model ProductImage {
   id        Int      @id @default(autoincrement())
   productId Int
   imageUrl  String
+  position  Int      @default(0) // display order; 0 = main image
   createdAt DateTime @default(now())
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   
@@ -136,6 +137,14 @@ model Order {
   couponId       Int?
   couponCode     String?
   status         String      @default("PENDING")
+  paymentMethod  String      @default("COD") // "COD" | "RAZORPAY" (older orders may say "UPI")
+  // "UNPAID" | "PAID" | "REFUND_PENDING" | "REFUNDED"
+  paymentStatus     String    @default("UNPAID")
+  razorpayOrderId   String?   @unique
+  razorpayPaymentId String?
+  refundId          String?
+  refundAmount      Float?
+  refundedAt        DateTime?
   createdAt      DateTime    @default(now())
   address        Address     @relation(fields: [addressId], references: [id])
   user           User        @relation(fields: [userId], references: [id])
@@ -202,4 +211,36 @@ model Coupon {
 
   @@index([type])
   @@index([isActive])
+}
+
+// Single-row table (id = 1) holding the admin-customisable home page hero banner.
+model HomeBanner {
+  id                  Int      @id @default(1)
+  isVisible           Boolean  @default(true)
+  badge               String   @default("")
+  title               String   @default("")
+  description         String   @default("")
+  primaryButtonText   String   @default("")
+  primaryButtonLink   String   @default("")
+  secondaryButtonText String   @default("")
+  secondaryButtonLink String   @default("")
+  stats               Json     @default("[]")
+  highlights          Json     @default("[]")
+  imageUrl            String?
+  imageAlt            String   @default("")
+  // Trust badges bar under the hero
+  trustVisible        Boolean  @default(true)
+  trustItems          Json     @default("[]")
+  // "Why us" section
+  whyVisible          Boolean  @default(true)
+  whyTitle            String   @default("")
+  whySubtitle         String   @default("")
+  whyCards            Json     @default("[]")
+  // Sign-up call-to-action banner (shown to logged-out visitors)
+  ctaVisible          Boolean  @default(true)
+  ctaTitle            String   @default("")
+  ctaText             String   @default("")
+  ctaButtonText       String   @default("")
+  ctaButtonLink       String   @default("")
+  updatedAt           DateTime @updatedAt
 }

@@ -1,4 +1,5 @@
 const prisma = require("../src/utils/prisma");
+const { ORDERED_PRODUCT_IMAGES } = require("../src/utils/productImages");
 const { isValidPriceUnit } = require("../src/utils/priceUnit");
 const {
   getImageUrlPath,
@@ -113,25 +114,24 @@ exports.createProduct = async (req, res) => {
         stock: parsedStock,
         priceUnit: priceUnit || "fixed"
       },
-      include: { images: true }
+      include: { images: ORDERED_PRODUCT_IMAGES }
     });
     console.log(`✓ Product created with ID: ${product.id}`);
 
     // Create ProductImage records for each uploaded file
     const imageUrls = req.files.map(file => getImageUrlPath(file.filename));
-    for (const imageUrl of imageUrls) {
-      await prisma.productImage.create({
-        data: {
-          productId: product.id,
-          imageUrl
-        }
-      });
-    }
+    await prisma.productImage.createMany({
+      data: imageUrls.map((imageUrl, position) => ({
+        productId: product.id,
+        imageUrl,
+        position
+      }))
+    });
 
     // Fetch product with all images
     const updatedProduct = await prisma.product.findUnique({
       where: { id: product.id },
-      include: { images: true }
+      include: { images: ORDERED_PRODUCT_IMAGES }
     });
 
     res.status(201).json(updatedProduct);
@@ -185,7 +185,7 @@ exports.getProducts = async (req, res) => {
     const products = await prisma.product.findMany({
       include: {
         category: true,
-        images: true
+        images: ORDERED_PRODUCT_IMAGES
       }
     });
     res.status(200).json(products);
@@ -207,7 +207,7 @@ exports.getProductsByCategory = async (req, res) => {
       where: { categoryId },
       include: {
         category: true,
-        images: true
+        images: ORDERED_PRODUCT_IMAGES
       }
     });
 
@@ -229,7 +229,7 @@ exports.getProductById = async (req, res) => {
       where: { id: productId },
       include: {
         category: true,
-        images: true,
+        images: ORDERED_PRODUCT_IMAGES,
         reviews: {
           include: publicReviewInclude,
           orderBy: { createdAt: "desc" }
@@ -301,7 +301,7 @@ exports.searchProducts = async (req, res) => {
       where,
       include: {
         category: true,
-        images: true
+        images: ORDERED_PRODUCT_IMAGES
       },
       orderBy: { createdAt: "desc" }
     });

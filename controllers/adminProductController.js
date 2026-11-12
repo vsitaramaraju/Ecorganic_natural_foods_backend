@@ -1,6 +1,12 @@
 const prisma = require("../src/utils/prisma");
+const { ORDERED_PRODUCT_IMAGES } = require("../src/utils/productImages");
 const { isValidPriceUnit } = require("../src/utils/priceUnit");
 const { getImageUrlPath, deleteImageFile } = require("../src/utils/imageUpload");
+
+// Delete files multer saved for a request that then failed.
+const removeUploadedFiles = files => {
+  (files || []).forEach(file => deleteImageFile(getImageUrlPath(file.filename)));
+};
 
 const parseProductId = value => {
   const productId = parseInt(value, 10);
@@ -74,7 +80,7 @@ exports.getAllProductsForAdmin = async (req, res) => {
     const products = await prisma.product.findMany({
       include: { 
         category: true,
-        images: true
+        images: ORDERED_PRODUCT_IMAGES
       },
       orderBy: { createdAt: "desc" }
     });
@@ -97,7 +103,7 @@ exports.getProductsByCategoryForAdmin = async (req, res) => {
       where: { categoryId },
       include: { 
         category: true,
-        images: true
+        images: ORDERED_PRODUCT_IMAGES
       },
       orderBy: { createdAt: "desc" }
     });
@@ -113,21 +119,24 @@ exports.updateProductForAdmin = async (req, res) => {
     const productId = parseProductId(req.params.id);
 
     if (!productId) {
+      removeUploadedFiles(req.files);
       return res.status(400).json({ error: "Invalid product id" });
     }
 
     const { data, error } = buildProductUpdateData(req.body);
 
     if (error) {
+      removeUploadedFiles(req.files);
       return res.status(400).json({ error });
     }
 
     const existingProduct = await prisma.product.findUnique({
       where: { id: productId },
-      include: { images: true }
+      include: { images: ORDERED_PRODUCT_IMAGES }
     });
 
     if (!existingProduct) {
+      removeUploadedFiles(req.files);
       return res.status(404).json({ error: "Product not found" });
     }
 
@@ -137,53 +146,120 @@ exports.updateProductForAdmin = async (req, res) => {
       });
 
       if (!category) {
+        removeUploadedFiles(req.files);
         return res.status(404).json({ error: "Category not found" });
       }
     }
 
-    // Handle new image uploads
-    if (req.files && req.files.length > 0) {
-      // Option 1: Replace all images (delete old ones)
-      const shouldReplaceImages = req.body.replaceImages === "true";
+    // Image changes:
+    //  - imageOrder (optional): JSON array giving the full display order. Entries are
+    //    existing image ids (numbers) or "new-<n>" for the n-th uploaded file.
+    //    Existing images left out are deleted; uploads left out go at the end.
+    //    The first image is the product's main image.
+    //  - without imageOrder, uploads are added after the existing images.
+    //  - replaceImages=true (older clients): drop all existing images.
+    const uploadedFiles = req.files || [];
+    const newUrls = uploadedFiles.map(file => getImageUrlPath(file.filename));
+    const byId = new Map(existingProduct.images.map(img => [img.id, img]));
 
-      if (shouldReplaceImages) {
-        // Delete old image files
-        for (const image of existingProduct.images) {
-          deleteImageFile(image.imageUrl);
-        }
-        // Delete old image records
-        await prisma.productImage.deleteMany({
-          where: { productId }
+    // Ordered list of { existing } or { newIndex } entries.
+    let ordered = existingProduct.images.map(img => ({ existing: img }));
+    let imagesChanged = uploadedFiles.length > 0;
+
+    if (req.body.imageOrder !== undefined) {
+      let entries;
+      try {
+        entries = JSON.parse(req.body.imageOrder);
+      } catch {
+        entries = null;
+      }
+      const parsed = Array.isArray(entries)
+        ? entries.map(entry => {
+            if (typeof entry === "number" && byId.has(entry)) {
+              return { key: `id-${entry}`, existing: byId.get(entry) };
+            }
+            const match = typeof entry === "string" && /^new-(\d+)$/.exec(entry);
+            const newIndex = match ? Number(match[1]) : -1;
+            if (newIndex >= 0 && newIndex < newUrls.length) {
+              return { key: entry, newIndex };
+            }
+            return null;
+          })
+        : null;
+
+      if (
+        !parsed ||
+        parsed.includes(null) ||
+        new Set(parsed.map(p => p.key)).size !== parsed.length
+      ) {
+        removeUploadedFiles(uploadedFiles);
+        return res.status(400).json({
+          error:
+            'imageOrder must list this product\'s image ids and/or "new-<n>" upload references, without duplicates'
         });
       }
-
-      // Add new image records and update primary image to first uploaded
-      const imageUrls = req.files.map(file => getImageUrlPath(file.filename));
-      for (const imageUrl of imageUrls) {
-        await prisma.productImage.create({
-          data: {
-            productId,
-            imageUrl
-          }
-        });
-      }
-
-      // Update product's primary image to first uploaded image
-      data.imageUrl = imageUrls[0];
+      ordered = parsed;
+      imagesChanged = true;
+    } else if (req.body.replaceImages === "true" && uploadedFiles.length > 0) {
+      ordered = [];
     }
 
-    if (Object.keys(data).length === 0 && (!req.files || req.files.length === 0)) {
+    // Uploads not placed by imageOrder go at the end.
+    const placed = new Set(ordered.filter(o => o.newIndex !== undefined).map(o => o.newIndex));
+    newUrls.forEach((_, newIndex) => {
+      if (!placed.has(newIndex)) ordered.push({ newIndex });
+    });
+
+    if (imagesChanged && ordered.length === 0) {
+      return res.status(400).json({ error: "A product needs at least one image" });
+    }
+
+    if (Object.keys(data).length === 0 && !imagesChanged) {
       return res.status(400).json({ error: "No fields provided for update" });
     }
 
-    const product = await prisma.product.update({
-      where: { id: productId },
-      data,
-      include: { 
-        category: true,
-        images: true
-      }
-    });
+    let removedImages = [];
+    const imageOps = [];
+    if (imagesChanged) {
+      const keptIds = new Set(ordered.filter(o => o.existing).map(o => o.existing.id));
+      removedImages = existingProduct.images.filter(img => !keptIds.has(img.id));
+
+      imageOps.push(
+        prisma.productImage.deleteMany({
+          where: { id: { in: removedImages.map(img => img.id) } }
+        }),
+        ...ordered.flatMap((o, position) =>
+          o.existing
+            ? [prisma.productImage.update({ where: { id: o.existing.id }, data: { position } })]
+            : []
+        ),
+        prisma.productImage.createMany({
+          data: ordered.flatMap((o, position) =>
+            o.existing ? [] : [{ productId, imageUrl: newUrls[o.newIndex], position }]
+          )
+        })
+      );
+
+      // The product's main image is the first one in display order.
+      const first = ordered[0];
+      data.imageUrl = first.existing ? first.existing.imageUrl : newUrls[first.newIndex];
+    }
+
+    // Image changes and the product update succeed or fail together.
+    const results = await prisma.$transaction([
+      ...imageOps,
+      prisma.product.update({
+        where: { id: productId },
+        data,
+        include: {
+          category: true,
+          images: ORDERED_PRODUCT_IMAGES
+        }
+      })
+    ]);
+    const product = results[results.length - 1];
+
+    removedImages.forEach(img => deleteImageFile(img.imageUrl));
 
     res.status(200).json({
       message: "Product updated successfully",
@@ -212,7 +288,7 @@ exports.deleteProductForAdmin = async (req, res) => {
 
     const existingProduct = await prisma.product.findUnique({
       where: { id: productId },
-      include: { images: true }
+      include: { images: ORDERED_PRODUCT_IMAGES }
     });
 
     if (!existingProduct) {
