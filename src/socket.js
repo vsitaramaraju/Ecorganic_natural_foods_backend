@@ -1,6 +1,7 @@
 const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
 const prisma = require("./utils/prisma");
+const { allowedOrigins } = require("./utils/allowedOrigins");
 
 let io = null;
 
@@ -23,7 +24,7 @@ let io = null;
 function initSocket(httpServer) {
   io = new Server(httpServer, {
     cors: {
-      origin: process.env.FRONTEND_URL || "http://localhost:5173",
+      origin: allowedOrigins(),
       credentials: true
     }
   });

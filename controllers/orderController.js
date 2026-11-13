@@ -4,6 +4,8 @@ const { evaluateCoupon } = require("../src/utils/couponUtils");
 const { unitLabel } = require("../src/utils/priceUnit");
 const { createAndBroadcastNotification } = require("../src/utils/notify");
 const razorpay = require("../src/utils/razorpay");
+const { getDeliveryFee } = require("../src/utils/delivery");
+const { sendOrderEmail } = require("../src/utils/orderEmails");
 
 // Kept in sync with the frontend's ORDER_STATUS_LABELS (src/utils/useNotifications.js)
 // so a notification reads the same whether it arrived live or was fetched later.
@@ -115,6 +117,18 @@ async function prepareCheckout(userId, { addressId, couponCode }) {
     throw new HttpError(400, "Cart is empty");
   }
 
+  // The cart API only stores whole quantities >= 1, but older rows may predate that
+  // check - a zero or negative quantity would lower the total (and add stock back).
+  const invalidItem = cartItems.find(
+    item => !Number.isInteger(item.quantity) || item.quantity < 1
+  );
+  if (invalidItem) {
+    throw new HttpError(
+      400,
+      `Please update the quantity of "${invalidItem.product.name}" in your cart`
+    );
+  }
+
   // `quantity` is the number of packs being bought and `stock` the number of packs
   // available (for fixed-price and per-weight products alike), so they compare directly.
   const outOfStockItems = cartItems.filter(item => item.quantity > item.product.stock);
@@ -148,15 +162,27 @@ async function prepareCheckout(userId, { addressId, couponCode }) {
     discountAmount = result.discountAmount;
   }
 
-  const totalAmount = Math.round((subtotalAmount - discountAmount) * 100) / 100;
+  // The fee the admin set (Admin → Delivery Fee); the cart and checkout show the same value.
+  const deliveryFee = await getDeliveryFee();
+  const totalAmount =
+    Math.round((subtotalAmount + deliveryFee - discountAmount) * 100) / 100;
 
-  return { addressId: address.id, cartItems, subtotalAmount, discountAmount, totalAmount, coupon };
+  return {
+    addressId: address.id,
+    cartItems,
+    subtotalAmount,
+    deliveryFee,
+    discountAmount,
+    totalAmount,
+    coupon
+  };
 }
 
 // Creates the order (always CONFIRMED), reserves stock, uses the coupon and empties
 // the cart - all in one transaction.
 async function createOrderRecord(userId, checkout, { paymentMethod, paymentStatus, payment }) {
-  const { addressId, cartItems, subtotalAmount, discountAmount, totalAmount, coupon } = checkout;
+  const { addressId, cartItems, subtotalAmount, deliveryFee, discountAmount, totalAmount, coupon } =
+    checkout;
 
   return prisma.$transaction(async tx => {
     const created = await tx.order.create({
@@ -164,6 +190,7 @@ async function createOrderRecord(userId, checkout, { paymentMethod, paymentStatu
         userId,
         addressId,
         subtotalAmount,
+        deliveryFee,
         discountAmount,
         totalAmount,
         couponId: coupon ? coupon.id : null,
@@ -230,6 +257,7 @@ function announceNewOrder(order, user) {
     }
   });
   notifyCustomerOfStatus(order.id);
+  sendOrderEmail(order.id, "confirmed"); // never throws; failures are only logged
 }
 
 // POST /api/orders - Cash on Delivery. Online payments go through the Razorpay endpoints.
@@ -639,6 +667,10 @@ exports.updateOrderStatus = async (req, res) => {
 
     res.json(order);
     notifyCustomerOfStatus(order.id);
+    // Email only when the order newly becomes "out for delivery" (not on a repeat save).
+    if (status === "OUT_FOR_DELIVERY" && current.status !== "OUT_FOR_DELIVERY") {
+      sendOrderEmail(order.id, "outForDelivery");
+    }
   } catch (error) {
     sendError(res, error);
   }

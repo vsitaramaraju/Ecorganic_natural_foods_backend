@@ -17,11 +17,14 @@ const contactRoutes = require("../routes/contactRoutes");
 const notificationRoutes = require("../routes/notificationRoutes");
 const adminNotificationRoutes = require("../routes/adminNotificationRoutes");
 const homeBannerRoutes = require("../routes/homeBannerRoutes");
+const settingsRoutes = require("../routes/settingsRoutes");
+
+const { allowedOrigins } = require("./utils/allowedOrigins");
 
 const app = express();
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin: allowedOrigins(),
     credentials: true
   })
 );
@@ -50,6 +53,8 @@ app.use("/api/coupons", couponRoutes);
 app.use("/api/admin/coupons", adminCouponRoutes);
 app.use("/api/home-banner", homeBannerRoutes.publicRouter);
 app.use("/api/admin/home-banner", homeBannerRoutes.adminRouter);
+app.use("/api/settings", settingsRoutes.publicRouter);
+app.use("/api/admin/settings", settingsRoutes.adminRouter);
 app.use("/api/admin", adminRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/notifications", notificationRoutes);

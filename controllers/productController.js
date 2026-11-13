@@ -147,7 +147,7 @@ exports.createProduct = async (req, res) => {
       title: "New product added",
       message: `"${updatedProduct.name}" just landed in the store.`,
       image: productImage,
-      link: `/product/${updatedProduct.id}`,
+      link: `/products/${updatedProduct.id}`,
       socketEvent: "product:new",
       socketPayload: {
         id: updatedProduct.id,

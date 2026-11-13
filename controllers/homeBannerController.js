@@ -29,7 +29,6 @@ const DEFAULT_BANNER = {
   trustVisible: true,
   trustItems: [
     { icon: "🌿", title: "100% Organic", text: "Certified by APEDA" },
-    { icon: "🚚", title: "Free Delivery", text: "On orders above ₹499" },
     { icon: "🔄", title: "Easy Returns", text: "No questions asked" },
     { icon: "🛡️", title: "Safe Payments", text: "100% secure checkout" }
   ],

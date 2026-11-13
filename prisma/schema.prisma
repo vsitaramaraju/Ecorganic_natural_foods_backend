@@ -132,6 +132,7 @@ model Order {
   userId         Int
   addressId      Int
   subtotalAmount Float       @default(0)
+  deliveryFee    Float       @default(0)
   discountAmount Float       @default(0)
   totalAmount    Float
   couponId       Int?
@@ -214,6 +215,19 @@ model Coupon {
 }
 
 // Single-row table (id = 1) holding the admin-customisable home page hero banner.
+// Store-wide settings the admin can change (single row, id = 1).
+model StoreSettings {
+  id          Int      @id @default(1)
+  deliveryFee Float    @default(49) // ₹ charged on every order; 0 = free delivery
+  // Festival theme shown on the storefront ("none" = off). Keys: src/utils/festivalTheme.js
+  festivalTheme       String    @default("none")
+  festivalMessage     String    @default("")
+  festivalEndsAt      DateTime? // theme switches itself off after this moment
+  festivalRecolor     Boolean   @default(true) // swap the site colours to the festival palette
+  festivalDecorations Boolean   @default(true) // falling festive decorations on page load
+  updatedAt   DateTime @updatedAt
+}
+
 model HomeBanner {
   id                  Int      @id @default(1)
   isVisible           Boolean  @default(true)
