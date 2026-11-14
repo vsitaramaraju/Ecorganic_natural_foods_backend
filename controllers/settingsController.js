@@ -1,4 +1,6 @@
 const { MAX_DELIVERY_FEE, getDeliveryFee, setDeliveryFee } = require("../src/utils/delivery");
+const { isCodEnabled, setCodEnabled } = require("../src/utils/paymentSettings");
+const razorpay = require("../src/utils/razorpay");
 const {
   getFestivalTheme,
   parseFestivalInput,
@@ -32,6 +34,47 @@ exports.updateDeliverySettings = async (req, res) => {
   } catch (error) {
     console.error("Failed to save delivery settings:", error);
     res.status(500).json({ message: "Could not save the delivery fee" });
+  }
+};
+
+// GET /api/admin/settings/payments - admin: whether COD is offered, and whether
+// online payment is configured (COD can't be turned off without it).
+exports.getPaymentSettings = async (req, res) => {
+  try {
+    res.json({
+      codEnabled: await isCodEnabled(),
+      razorpayEnabled: razorpay.isRazorpayConfigured()
+    });
+  } catch (error) {
+    console.error("Failed to load payment settings:", error);
+    res.status(500).json({ message: "Could not load the payment settings" });
+  }
+};
+
+// PUT /api/admin/settings/payments - admin: { codEnabled: boolean }.
+exports.updatePaymentSettings = async (req, res) => {
+  const { codEnabled } = req.body || {};
+  if (typeof codEnabled !== "boolean") {
+    return res.status(400).json({ message: "codEnabled must be true or false" });
+  }
+  const razorpayEnabled = razorpay.isRazorpayConfigured();
+  if (!codEnabled && !razorpayEnabled) {
+    return res.status(400).json({
+      message:
+        "Online payment (Razorpay) isn't set up, so Cash on Delivery can't be turned off - customers would have no way to pay."
+    });
+  }
+
+  try {
+    const saved = await setCodEnabled(codEnabled);
+    res.json({
+      message: saved ? "Cash on Delivery turned on" : "Cash on Delivery turned off",
+      codEnabled: saved,
+      razorpayEnabled
+    });
+  } catch (error) {
+    console.error("Failed to save payment settings:", error);
+    res.status(500).json({ message: "Could not save the payment settings" });
   }
 };
 

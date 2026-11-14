@@ -4,7 +4,9 @@ const {
   getDeliverySettings,
   updateDeliverySettings,
   getThemeSettings,
-  updateThemeSettings
+  updateThemeSettings,
+  getPaymentSettings,
+  updatePaymentSettings
 } = require("../controllers/settingsController");
 
 // Mounted at /api/settings
@@ -17,5 +19,7 @@ const adminRouter = express.Router();
 adminRouter.use(authenticateToken, authorizeAdmin);
 adminRouter.put("/delivery", updateDeliverySettings);
 adminRouter.put("/theme", updateThemeSettings);
+adminRouter.get("/payments", getPaymentSettings);
+adminRouter.put("/payments", updatePaymentSettings);
 
 module.exports = { publicRouter, adminRouter };

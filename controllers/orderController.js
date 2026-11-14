@@ -6,6 +6,7 @@ const { createAndBroadcastNotification } = require("../src/utils/notify");
 const razorpay = require("../src/utils/razorpay");
 const { getDeliveryFee } = require("../src/utils/delivery");
 const { sendOrderEmail } = require("../src/utils/orderEmails");
+const { isCodEnabled } = require("../src/utils/paymentSettings");
 
 // Kept in sync with the frontend's ORDER_STATUS_LABELS (src/utils/useNotifications.js)
 // so a notification reads the same whether it arrived live or was fetched later.
@@ -269,6 +270,9 @@ exports.createOrder = async (req, res) => {
     if (paymentMethod !== "COD") {
       throw new HttpError(400, "Online payments must be completed through Razorpay checkout");
     }
+    if (!(await isCodEnabled())) {
+      throw new HttpError(400, "Cash on Delivery is not available right now. Please pay online.");
+    }
 
     const checkout = await prepareCheckout(req.user.id, req.body);
     const order = await createOrderRecord(req.user.id, checkout, {
@@ -433,15 +437,23 @@ exports.verifyRazorpayPayment = async (req, res) => {
   }
 };
 
-// GET /api/orders/payment-config - lets the checkout page decide whether to offer
-// online payment. The key id is public by design; the secret never leaves the server.
-exports.getPaymentConfig = (req, res) => {
-  const enabled = razorpay.isRazorpayConfigured();
-  res.json({
-    razorpayEnabled: enabled,
-    keyId: enabled ? process.env.RAZORPAY_KEY_ID : null,
-    methods: enabled ? ["COD", "RAZORPAY"] : ["COD"]
-  });
+// GET /api/orders/payment-config - lets the checkout page decide which payment methods
+// to offer. The key id is public by design; the secret never leaves the server.
+exports.getPaymentConfig = async (req, res) => {
+  try {
+    const enabled = razorpay.isRazorpayConfigured();
+    // COD can only be switched off while online payment works (see the settings
+    // controller); this guard keeps checkout usable if Razorpay is removed later.
+    const codEnabled = !enabled || (await isCodEnabled());
+    res.json({
+      razorpayEnabled: enabled,
+      codEnabled,
+      keyId: enabled ? process.env.RAZORPAY_KEY_ID : null,
+      methods: [...(codEnabled ? ["COD"] : []), ...(enabled ? ["RAZORPAY"] : [])]
+    });
+  } catch (error) {
+    sendError(res, error);
+  }
 };
 
 // POST /api/payments/razorpay/webhook - Razorpay's servers tell us about payments and

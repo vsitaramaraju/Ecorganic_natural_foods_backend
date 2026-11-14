@@ -224,6 +224,7 @@ model Coupon {
 model StoreSettings {
   id          Int      @id @default(1)
   deliveryFee Float    @default(49) // ₹ charged on every order; 0 = free delivery
+  codEnabled  Boolean  @default(true) // offer Cash on Delivery at checkout (online payment is always offered)
   // Festival theme shown on the storefront ("none" = off). Keys: src/utils/festivalTheme.js
   festivalTheme       String    @default("none")
   festivalMessage     String    @default("")
