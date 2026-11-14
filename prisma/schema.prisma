@@ -146,6 +146,11 @@ model Order {
   refundId          String?
   refundAmount      Float?
   refundedAt        DateTime?
+  // Shipment details, filled in when the admin hands the parcel to a courier.
+  courierName       String?
+  trackingId        String?
+  trackingUrl       String?
+  shippedAt         DateTime?
   createdAt      DateTime    @default(now())
   address        Address     @relation(fields: [addressId], references: [id])
   user           User        @relation(fields: [userId], references: [id])

@@ -676,6 +676,72 @@ exports.updateOrderStatus = async (req, res) => {
   }
 };
 
+// POST /api/admin/orders/:id/ship - records the courier and tracking details, marks a
+// new order as SHIPPED and emails the customer how to track the parcel. Can be sent
+// again to correct the details; the customer is re-emailed only if they changed.
+exports.shipOrder = async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      throw new HttpError(400, "Invalid order id");
+    }
+
+    const courierName = String(req.body.courierName || "").trim();
+    const trackingId = String(req.body.trackingId || "").trim();
+    const trackingUrl = String(req.body.trackingUrl || "").trim();
+
+    if (!courierName || courierName.length > 60) {
+      throw new HttpError(400, "Enter the delivery partner's name (up to 60 characters).");
+    }
+    if (!trackingId || trackingId.length > 60) {
+      throw new HttpError(400, "Enter the tracking ID (up to 60 characters).");
+    }
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(trackingUrl);
+    } catch {
+      parsedUrl = null;
+    }
+    if (!parsedUrl || !["http:", "https:"].includes(parsedUrl.protocol) || trackingUrl.length > 500) {
+      throw new HttpError(400, "Enter a valid tracking link starting with http:// or https://.");
+    }
+
+    const current = await prisma.order.findUnique({ where: { id } });
+    if (!current) throw new HttpError(404, "Order not found");
+    if (current.status === "CANCELLED") {
+      throw new HttpError(400, "This order was cancelled, so it can't be shipped.");
+    }
+    if (current.status === "DELIVERED") {
+      throw new HttpError(400, "This order has already been delivered.");
+    }
+
+    // A new order moves to SHIPPED; one already shipped or out for delivery keeps
+    // its status and only gets its tracking details corrected.
+    const isNewlyShipped = ["PENDING", "CONFIRMED"].includes(current.status);
+    const detailsChanged =
+      current.courierName !== courierName ||
+      current.trackingId !== trackingId ||
+      current.trackingUrl !== trackingUrl;
+
+    const order = await prisma.order.update({
+      where: { id },
+      data: {
+        courierName,
+        trackingId,
+        trackingUrl,
+        ...(isNewlyShipped ? { status: "SHIPPED" } : {}),
+        ...(current.shippedAt ? {} : { shippedAt: new Date() })
+      }
+    });
+
+    res.json(order);
+    if (isNewlyShipped) notifyCustomerOfStatus(order.id);
+    if (isNewlyShipped || detailsChanged) sendOrderEmail(order.id, "shipped");
+  } catch (error) {
+    sendError(res, error);
+  }
+};
+
 exports.getOrderById = async (req, res) => {
   try {
     const id = Number(req.params.id);

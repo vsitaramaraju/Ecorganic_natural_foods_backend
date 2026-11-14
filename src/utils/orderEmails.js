@@ -4,6 +4,7 @@ const { parsePriceUnit } = require("./priceUnit");
 
 // Order emails sent to the customer:
 //   "confirmed"        - right after an order is placed (orders are auto-confirmed)
+//   "shipped"          - when an admin hands the parcel to a courier (with tracking)
 //   "outForDelivery"   - when an admin sets the order to OUT_FOR_DELIVERY
 // They are sent after the API has responded and never throw, so an email problem
 // can't block or fail an order. Failures are only logged.
@@ -201,7 +202,50 @@ function outForDeliveryEmail(order) {
   return { subject, html };
 }
 
-const TEMPLATES = { confirmed: orderConfirmationEmail, outForDelivery: outForDeliveryEmail };
+// Only http(s) links go into the email, so a bad value can't become a script link.
+const safeUrl = url => (/^https?:\/\//i.test(String(url || "")) ? url : null);
+
+function shippedEmail(order) {
+  const courier = order.courierName || "our courier partner";
+  const trackingUrl = safeUrl(order.trackingUrl);
+  const subject = `Shipped: order #${order.id} via ${courier} – ${STORE_NAME}`;
+  const html = layout({
+    preheader: `Order #${order.id} has shipped with ${courier}. Tracking ID: ${order.trackingId}.`,
+    heading: "Your order has been shipped 📦",
+    intro: `Good news, ${esc(firstName(order.user?.name))}! Order <strong>#${order.id}</strong> is packed and on its way with <strong>${esc(courier)}</strong>. Use the tracking ID below to follow your parcel.`,
+    body: `
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate;background:#f6faf6;border:1px solid ${BRAND.line};border-radius:10px;">
+        <tr><td style="padding:18px 20px;">
+          <div style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:${BRAND.muted};">Delivery partner</div>
+          <div style="font-size:16px;font-weight:700;color:${BRAND.dark};margin:2px 0 14px;">${esc(courier)}</div>
+          <div style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:${BRAND.muted};">Tracking ID</div>
+          <div style="display:inline-block;margin-top:4px;padding:8px 14px;border:2px dashed ${BRAND.main};border-radius:8px;background:#ffffff;font-family:Menlo,Consolas,monospace;font-size:18px;font-weight:700;letter-spacing:.05em;color:${BRAND.dark};">${esc(order.trackingId)}</div>
+        </td></tr>
+      </table>
+      ${
+        trackingUrl
+          ? `${button(trackingUrl, `Track on ${esc(courier)}`)}
+             <p style="margin:0 0 20px;font-size:13px;line-height:1.6;color:${BRAND.muted};text-align:center;">
+               If the page asks for it, enter the tracking ID above.<br/>
+               <a href="${esc(trackingUrl)}" style="color:${BRAND.main};word-break:break-all;">${esc(trackingUrl)}</a>
+             </p>`
+          : ""
+      }
+      <div style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:${BRAND.muted};margin:8px 0 4px;">In this parcel</div>
+      ${itemsTable(order.items)}
+      ${totalsTable(order)}
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:22px;border-collapse:separate;border-spacing:8px 0;">
+        <tr>${infoBox("Delivering to", addressBlock(order.address))}${infoBox("Payment", paymentText(order))}</tr>
+      </table>`
+  });
+  return { subject, html };
+}
+
+const TEMPLATES = {
+  confirmed: orderConfirmationEmail,
+  shipped: shippedEmail,
+  outForDelivery: outForDeliveryEmail
+};
 
 const loadOrder = orderId =>
   prisma.order.findUnique({
@@ -214,7 +258,7 @@ const loadOrder = orderId =>
   });
 
 /**
- * Emails the customer about their order. `kind` is "confirmed" or "outForDelivery".
+ * Emails the customer about their order. `kind` is "confirmed", "shipped" or "outForDelivery".
  * Never throws; returns true if the email was handed to Resend.
  */
 async function sendOrderEmail(orderId, kind) {
@@ -252,4 +296,4 @@ async function sendOrderEmail(orderId, kind) {
   }
 }
 
-module.exports = { sendOrderEmail, orderConfirmationEmail, outForDeliveryEmail };
+module.exports = { sendOrderEmail, orderConfirmationEmail, shippedEmail, outForDeliveryEmail };
