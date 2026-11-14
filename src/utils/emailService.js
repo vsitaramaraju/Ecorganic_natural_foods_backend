@@ -2,6 +2,20 @@ const { Resend } = require('resend');
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+// RESEND_FROM_EMAIL is what .env defines; EMAIL_FROM is kept for older setups.
+// The onboarding@resend.dev fallback can only deliver to the Resend account
+// owner, so a missing setting makes mail to customers fail.
+const FROM_ADDRESS =
+  process.env.EMAIL_FROM || process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+
+// The Resend SDK reports failures as { error } instead of throwing, so
+// throw here or the caller would report success for an email never sent.
+const sendEmail = async (payload) => {
+  const { data, error } = await resend.emails.send({ from: FROM_ADDRESS, ...payload });
+  if (error) throw new Error(error.message || JSON.stringify(error));
+  return data;
+};
+
 const sendPasswordResetEmail = async (email, resetToken, userName) => {
   try {
     // Create reset link with the token
@@ -51,8 +65,7 @@ const sendPasswordResetEmail = async (email, resetToken, userName) => {
       </div>
     `;
 
-    const response = await resend.emails.send({
-      from: process.env.EMAIL_FROM || 'onboarding@resend.dev',
+    const response = await sendEmail({
       to: email,
       subject: 'Password Reset Request - Eco Organic Natural Foods',
       html: htmlContent,
@@ -158,8 +171,7 @@ const sendContactFormEmail = async (name, userEmail, subject, message) => {
     `;
 
     // Send to admin
-    await resend.emails.send({
-      from: process.env.EMAIL_FROM || 'onboarding@resend.dev',
+    await sendEmail({
       to: process.env.ADMIN_EMAIL || 'ecorganicplanet@gmail.com',
       replyTo: userEmail,
       subject: `New Contact Form Submission: ${subject}`,
@@ -167,8 +179,7 @@ const sendContactFormEmail = async (name, userEmail, subject, message) => {
     });
 
     // Send confirmation to user
-    await resend.emails.send({
-      from: process.env.EMAIL_FROM || 'onboarding@resend.dev',
+    await sendEmail({
       to: userEmail,
       subject: 'We Received Your Message - Eco Organic Natural Foods',
       html: userHtmlContent,
