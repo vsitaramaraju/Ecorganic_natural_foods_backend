@@ -5,7 +5,6 @@ const { parsePriceUnit } = require("./priceUnit");
 // Order emails sent to the customer:
 //   "confirmed"        - right after an order is placed (orders are auto-confirmed)
 //   "shipped"          - when an admin hands the parcel to a courier (with tracking)
-//   "outForDelivery"   - when an admin sets the order to OUT_FOR_DELIVERY
 // They are sent after the API has responded and never throw, so an email problem
 // can't block or fail an order. Failures are only logged.
 
@@ -162,7 +161,7 @@ function orderConfirmationEmail(order) {
   const html = layout({
     preheader: `Thanks for your order! Order #${order.id} for ${rupees(order.totalAmount)} is confirmed.`,
     heading: `Thank you for your order, ${esc(firstName(order.user?.name))}! 🎉`,
-    intro: `Your order <strong>#${order.id}</strong> placed on ${formatDate(order.createdAt)} is confirmed. We're picking the freshest produce for you and will email you again when it's out for delivery.`,
+    intro: `Your order <strong>#${order.id}</strong> placed on ${formatDate(order.createdAt)} is confirmed. We're picking the freshest produce for you and will email you again with tracking details once it ships.`,
     body: `
       <div style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:${BRAND.muted};margin-bottom:4px;">Order summary</div>
       ${itemsTable(order.items)}
@@ -171,33 +170,6 @@ function orderConfirmationEmail(order) {
         <tr>${infoBox("Delivering to", addressBlock(order.address))}${infoBox("Payment", paymentText(order))}</tr>
       </table>
       ${button(`${siteUrl()}/orders`, "View my order")}`
-  });
-  return { subject, html };
-}
-
-function outForDeliveryEmail(order) {
-  const isCodDue = order.paymentMethod === "COD" && order.paymentStatus !== "PAID";
-  const itemCount = order.items.reduce((sum, i) => sum + i.quantity, 0);
-  const subject = `Out for delivery: order #${order.id} – ${STORE_NAME}`;
-  const html = layout({
-    preheader: `Your order #${order.id} is on its way and will reach you soon.`,
-    heading: "Your order is out for delivery 🚚",
-    intro: `Good news, ${esc(firstName(order.user?.name))}! Order <strong>#${order.id}</strong> (${itemCount} item${itemCount === 1 ? "" : "s"}) has left our store and will reach you soon. Please keep your phone handy so our delivery partner can reach you.`,
-    body: `
-      ${
-        isCodDue
-          ? `<div style="padding:14px 16px;background:#fff8e6;border:1px solid #f3d27a;border-radius:8px;font-size:15px;color:#6b4e00;margin-bottom:20px;">
-               💵 <strong>Cash on Delivery:</strong> please keep <strong>${rupees(order.totalAmount)}</strong> ready.
-             </div>`
-          : ""
-      }
-      <div style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:${BRAND.muted};margin-bottom:4px;">What's coming</div>
-      ${itemsTable(order.items)}
-      ${totalsTable(order)}
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:22px;border-collapse:separate;border-spacing:8px 0;">
-        <tr>${infoBox("Delivering to", addressBlock(order.address))}${infoBox("Payment", paymentText(order))}</tr>
-      </table>
-      ${button(`${siteUrl()}/orders`, "Track in My Orders")}`
   });
   return { subject, html };
 }
@@ -243,8 +215,7 @@ function shippedEmail(order) {
 
 const TEMPLATES = {
   confirmed: orderConfirmationEmail,
-  shipped: shippedEmail,
-  outForDelivery: outForDeliveryEmail
+  shipped: shippedEmail
 };
 
 const loadOrder = orderId =>
@@ -258,7 +229,7 @@ const loadOrder = orderId =>
   });
 
 /**
- * Emails the customer about their order. `kind` is "confirmed", "shipped" or "outForDelivery".
+ * Emails the customer about their order. `kind` is "confirmed" or "shipped".
  * Never throws; returns true if the email was handed to Resend.
  */
 async function sendOrderEmail(orderId, kind) {
@@ -296,4 +267,4 @@ async function sendOrderEmail(orderId, kind) {
   }
 }
 
-module.exports = { sendOrderEmail, orderConfirmationEmail, shippedEmail, outForDeliveryEmail };
+module.exports = { sendOrderEmail, orderConfirmationEmail, shippedEmail };

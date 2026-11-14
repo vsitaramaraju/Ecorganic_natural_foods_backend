@@ -18,8 +18,10 @@ const ORDER_STATUS_LABELS = {
   CANCELLED: "cancelled"
 };
 
-// Orders are confirmed automatically, so admins can't move an order back to PENDING.
-const ADMIN_SETTABLE_STATUSES = ["CONFIRMED", "SHIPPED", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED"];
+// Order lifecycle: CONFIRMED (orders are confirmed automatically) -> SHIPPED (set by
+// shipOrder with tracking details) -> DELIVERED, or CANCELLED. PENDING and
+// OUT_FOR_DELIVERY stay in the labels above only for older orders.
+const ADMIN_SETTABLE_STATUSES = ["CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"];
 
 // Customer details safe to send to the admin panel (never the password hash or reset token).
 const SAFE_USER_FIELDS = { select: { id: true, name: true, email: true, phone: true } };
@@ -667,10 +669,6 @@ exports.updateOrderStatus = async (req, res) => {
 
     res.json(order);
     notifyCustomerOfStatus(order.id);
-    // Email only when the order newly becomes "out for delivery" (not on a repeat save).
-    if (status === "OUT_FOR_DELIVERY" && current.status !== "OUT_FOR_DELIVERY") {
-      sendOrderEmail(order.id, "outForDelivery");
-    }
   } catch (error) {
     sendError(res, error);
   }
